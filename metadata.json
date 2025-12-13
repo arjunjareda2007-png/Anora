@@ -1,0 +1,9 @@
+{
+  "name": "Anora - Sovereign AI",
+  "description": "The ultimate neural companion for Arjun Bharti Mina and authorized users.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
