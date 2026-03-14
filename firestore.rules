@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required, size 1-100)
+    //   - email: string (required, email format)
+    //   - avatar: string (optional, url format)
+    //   - role: string (required, enum: OWNER, ADMIN, USER)
+    //   - tier: string (required, enum: FREE, PRO, LIFETIME)
+    //   - preferences: map (required)
+    //   - createdAt: string (required, date-time format)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN') ||
+         (request.auth.token.email == "arjunjareda2007@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUser(data) {
+      let requiredFields = ['id', 'name', 'email', 'role', 'tier', 'preferences', 'createdAt'];
+      return data.keys().hasAll(requiredFields) &&
+             data.id is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.role in ['OWNER', 'ADMIN', 'USER', 'PREMIUM'] &&
+             data.tier in ['FREE', 'PRO', 'LIFETIME', 'CUSTOM'] &&
+             data.preferences is map &&
+             data.createdAt is string;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if (isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin())) ||
+                      (isValidUser(request.resource.data) && request.resource.data.email == "arjunjareda2007@gmail.com" && userId == "sovereign_arj");
+      allow update: if (isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin())) ||
+                      (isValidUser(request.resource.data) && request.resource.data.email == "arjunjareda2007@gmail.com" && userId == "sovereign_arj");
+      allow delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-outfit: "Outfit", sans-serif;
+}
+
+:root {
+    --sat: env(safe-area-inset-top);
+    --sar: env(safe-area-inset-right);
+    --sab: env(safe-area-inset-bottom);
+    --sal: env(safe-area-inset-left);
+}
+
+* {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+    scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+    display: none;
+}
+
+html, body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: #ffffff;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    position: fixed;
+    touch-action: pan-y;
+}
+
+#root {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Theme Styles */
+.theme-obsidian { background-color: #000000 !important; color: #ffffff !important; }
+.theme-neural-noise { background-color: #0a0a0a !important; color: #e4e4e7 !important; }
+.theme-minimal { background-color: #ffffff !important; color: #000000 !important; }
+.theme-singularity { background-color: #020617 !important; color: #f8fafc !important; }
+.theme-mesh-gradient { 
+    background: radial-gradient(circle at 0% 0%, #ffffff 0%, #f8fafc 100%) !important;
+    color: #0f172a !important;
+}
+.theme-neon-dream { background-color: #0d0221 !important; color: #00f2ff !important; }
+.theme-solaris { background-color: #fffbeb !important; color: #92400e !important; }
+.theme-monochrome { background-color: #f4f4f5 !important; color: #18181b !important; }
+.theme-emerald-city { background-color: #064e3b !important; color: #ecfdf5 !important; }
+
+.dark-mode { background-color: #000000 !important; color: #ffffff !important; }
+.light-mode { background-color: #ffffff !important; color: #000000 !important; }
+
+/* Selection Color */
+::selection {
+    background: rgba(212, 175, 55, 0.2);
+    color: inherit;
+}
+
+/* Custom Animations */
+@keyframes pulse-slow {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.05); }
+}
+
+.animate-pulse-slow {
+    animation: pulse-slow 8s ease-in-out infinite;
+}
+
+/* Glassmorphism */
+.glass-panel {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-panel-light {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* Scanline Effect for Owner */
+.owner-scanline::after {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    z-index: 2;
+    background-size: 100% 2px, 3px 100%;
+    pointer-events: none;
+    opacity: 0.1;
+}
+
+/* Utility classes that might be missing from Tailwind default if not scanned properly */
+.pt-safe { padding-top: var(--sat); }
+.pb-safe { padding-bottom: var(--sab); }

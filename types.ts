@@ -1,4 +1,5 @@
 
+
 export enum Role {
   OWNER = 'OWNER',
   PREMIUM = 'PREMIUM',
@@ -8,14 +9,53 @@ export enum Role {
 export enum SubscriptionTier {
   LIFETIME = 'LIFETIME',
   PRO = 'PRO',
-  FREE = 'FREE'
+  FREE = 'FREE',
+  CUSTOM = 'CUSTOM'
 }
 
 export type AiMood = 'CALM' | 'ENERGIZED' | 'STRICT' | 'CREATIVE' | 'SOVEREIGN' | 'ENGINEERING' | string;
 export type IntelligenceLevel = 'LITE' | 'BALANCED' | 'DEEP';
-export type AppTheme = 'OBSIDIAN' | 'NEURAL_NOISE' | 'MESH_GRADIENT' | 'MINIMAL' | 'SINGULARITY';
+export type AppTheme = 'OBSIDIAN' | 'NEURAL_NOISE' | 'MESH_GRADIENT' | 'MINIMAL' | 'SINGULARITY' | 'CYBERPUNK' | 'AURORA' | 'ECHO' | 'VINTAGE' | 'MIDNIGHT' | 'NEON_DREAM' | 'SOLARIS' | 'MONOCHROME' | 'EMERALD_CITY';
 export type AppFont = 'INTER' | 'OUTFIT';
-export type Persona = 'DEFAULT' | 'FRIEND' | 'TEACHER' | 'MENTOR' | 'GIRLFRIEND' | 'BOYFRIEND' | 'BROTHER' | 'SISTER' | 'SOVEREIGN_AI';
+export type Persona = 'DEFAULT' | 'FRIEND' | 'TEACHER' | 'MENTOR' | 'GIRLFRIEND' | 'BOYFRIEND' | 'BROTHER' | 'SISTER' | 'SOVEREIGN_AI' | 'WIFE' | 'HUSBAND';
+
+export type NeuralAffect = 'SOVEREIGN' | 'RADIANT' | 'MELANCHOLY' | 'CRIMSON' | 'VALIANT' | 'EXCITED';
+export type ImageAspectRatio = '1:1' | '4:3' | '3:4' | '16:9' | '9:16';
+
+export interface TokenUsage {
+  chat: number;
+  image: number;
+  video: number;
+  audio: number;
+  lastReset: string;
+}
+
+export interface UpgradeRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  requestedTier: SubscriptionTier;
+  message?: string;
+  timestamp: string;
+  status: 'PENDING' | 'APPROVED' | 'DENIED';
+}
+
+export interface TierCapability {
+  googleSearch: boolean;
+  googleMaps: boolean;
+  imageSynthesis: boolean;
+  videoSynthesis: boolean;
+  maxIntelligence: IntelligenceLevel;
+  advancedReasoning: boolean;
+  reasoningBudget: number;
+}
+
+export interface CustomTier {
+  id: string;
+  name: string;
+  capabilities: TierCapability;
+}
 
 export interface GroundingSource {
   title?: string;
@@ -26,11 +66,19 @@ export interface CustomMood {
   id: string;
   name: string;
   description: string;
-  strictness: number; // 0-100
-  verbosity: number; // 0-100
-  technicality: number; // 0-100
-  creativity: number; // 0-100
-  authority: number; // 0-100
+  strictness: number;
+  verbosity: number;
+  technicality: number;
+  creativity: number;
+  authority: number;
+}
+
+export interface NeuralMemoryItem {
+  id: string;
+  content: string;
+  category: 'PREFERENCE' | 'FACT' | 'PROJECT' | 'PERSONAL' | 'WORK' | 'CREATIVE';
+  timestamp: string;
+  strength: number;
 }
 
 export interface SiteLog {
@@ -38,6 +86,7 @@ export interface SiteLog {
   project: string;
   date: string;
   details: string;
+  status: 'PENDING' | 'COMPLETED' | 'CRITICAL';
   autoCadLinked?: boolean;
 }
 
@@ -48,6 +97,7 @@ export interface LyricDraft {
   content: string;
   timestamp: string;
   bpm?: number;
+  mood?: string;
 }
 
 export interface VaultItem {
@@ -55,6 +105,14 @@ export interface VaultItem {
   title: string;
   content: string;
   type: 'TEXT' | 'CODE' | 'NOTE';
+}
+
+export interface Reminder {
+  id: string;
+  text: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'SOVEREIGN';
+  dueDate?: string;
+  completed: boolean;
 }
 
 export interface UserPreferences {
@@ -69,6 +127,10 @@ export interface UserPreferences {
   font: AppFont;
   soundEnabled: boolean;
   persona: Persona;
+  arjunDirectives?: string;
+  // Added colorMode to support user interface theme variations
+  colorMode: 'WHITE' | 'DARK';
+  onboardingComplete?: boolean;
 }
 
 export interface User {
@@ -76,20 +138,32 @@ export interface User {
   name: string;
   email: string;
   password?: string;
+  dob?: string;
+  phoneNumber?: string;
   bio?: string;
   role: Role;
   tier: SubscriptionTier;
+  customTierId?: string;
   avatar?: string;
   preferences: UserPreferences;
   createdAt: string;
-  reminders: any[];
+  reminders: Reminder[];
   notes: any[];
-  memory: any[];
+  memory: NeuralMemoryItem[];
   projects: any[];
   lyrics?: LyricDraft[];
   siteLogs?: SiteLog[];
   vault?: VaultItem[];
   customMoods?: CustomMood[];
+  tokens?: TokenUsage;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Message {
@@ -99,5 +173,8 @@ export interface Message {
   timestamp: Date;
   sources?: GroundingSource[];
   images?: string[];
-  audioUrl?: string;
+  audioUrl?: string; // Base64 PCM data or Data URL
+  thinking?: string;
+  intent?: 'ENGINEERING' | 'CREATIVE' | 'GENERAL' | 'SOVEREIGN';
+  affect?: NeuralAffect;
 }

@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and preferences",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "avatar": { "type": "string" },
+        "role": { "type": "string", "enum": ["OWNER", "ADMIN", "USER", "PREMIUM"] },
+        "tier": { "type": "string", "enum": ["FREE", "PRO", "LIFETIME", "CUSTOM"] },
+        "bio": { "type": "string" },
+        "preferences": {
+          "type": "object",
+          "properties": {
+            "accentColor": { "type": "string" },
+            "aiMood": { "type": "string" },
+            "voiceName": { "type": "string" },
+            "autoRead": { "type": "boolean" },
+            "continuousListening": { "type": "boolean" },
+            "intelligenceLevel": { "type": "string" },
+            "language": { "type": "string" },
+            "theme": { "type": "string" },
+            "font": { "type": "string" },
+            "soundEnabled": { "type": "boolean" },
+            "persona": { "type": "string" },
+            "colorMode": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "email", "role", "tier", "preferences", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User documents"
+    }
+  }
+}
