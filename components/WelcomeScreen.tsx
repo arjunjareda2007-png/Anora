@@ -25,18 +25,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ user, onComplete }
 
   return (
     <div className="fixed inset-0 z-[1000] bg-white dark:bg-zinc-950 flex flex-col items-center justify-center overflow-hidden">
-      {/* Background Aura */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-30">
-        <motion.div 
-          animate={{ 
-            scale: [1, 1.2, 1],
-            opacity: [0.1, 0.3, 0.1]
-          }}
-          transition={{ duration: 4, repeat: Infinity }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] rounded-full blur-[120px]"
-          style={{ backgroundColor: user.preferences.accentColor }}
-        />
-      </div>
+      {/* Background Aura Removed */}
 
       <div className="relative z-10 flex flex-col items-center space-y-12">
         <motion.div
@@ -95,7 +84,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ user, onComplete }
                   Anora Sovereign AI
                 </h1>
                 <p className="text-[10px] sm:text-xs font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-[0.5em]">
-                  v8.5 Core // Ready to Manifest
+                  v13.05.2007 Core // Ready to Manifest
                 </p>
               </motion.div>
             )}

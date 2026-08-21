@@ -47,8 +47,8 @@ export const NeuralOrb: React.FC<NeuralOrbProps> = ({
   const { color: orbColor, speed } = getAffectiveStyles();
 
   return (
-    <div className="fixed bottom-36 left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-[110]">
-      <div className="relative w-32 h-32 flex items-center justify-center">
+    <div className="fixed bottom-24 right-8 flex items-center justify-center pointer-events-none z-[110]">
+      <div className="relative w-24 h-24 flex items-center justify-center">
         
         {/* Core Glow */}
         <motion.div 
@@ -61,7 +61,7 @@ export const NeuralOrb: React.FC<NeuralOrbProps> = ({
             repeat: Infinity,
             ease: "easeInOut"
           }}
-          className="absolute w-20 h-20 rounded-full blur-2xl"
+          className="absolute w-16 h-16 rounded-full blur-2xl"
           style={{ backgroundColor: orbColor }}
         />
 
@@ -75,10 +75,10 @@ export const NeuralOrb: React.FC<NeuralOrbProps> = ({
             repeat: Infinity,
             ease: "easeInOut"
           }}
-          className="absolute w-12 h-12 rounded-full border border-white/20 shadow-inner"
+          className="absolute w-8 h-8 rounded-full border border-white/20 shadow-inner"
           style={{ 
             backgroundColor: orbColor,
-            boxShadow: `0 0 40px ${orbColor}80`
+            boxShadow: `0 0 30px ${orbColor}80`
           }}
         />
 
@@ -94,35 +94,18 @@ export const NeuralOrb: React.FC<NeuralOrbProps> = ({
                 className="absolute inset-0 border border-dashed rounded-full"
                 style={{ borderColor: orbColor }}
               />
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.5 }}
-                animate={{ opacity: 0.2, scale: 1.8, rotate: -360 }}
-                exit={{ opacity: 0, scale: 0.5 }}
-                transition={{ duration: speed * 3, repeat: Infinity, ease: "linear" }}
-                className="absolute inset-0 border border-dotted rounded-full"
-                style={{ borderColor: orbColor }}
-              />
             </>
           )}
         </AnimatePresence>
 
-        <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 whitespace-nowrap text-center">
+        <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 whitespace-nowrap text-center">
           <motion.span 
             animate={{ opacity: [0.4, 1, 0.4] }}
             transition={{ duration: 2, repeat: Infinity }}
-            className={`text-[9px] font-black uppercase tracking-[0.6em] transition-colors duration-700 ${listening && !active && !speaking ? 'text-blue-500' : 'text-zinc-500 dark:text-zinc-400'}`}
+            className={`text-[7px] font-black uppercase tracking-[0.4em] transition-colors duration-700 ${listening && !active && !speaking ? 'text-blue-500' : 'text-zinc-500 dark:text-zinc-400'}`}
           >
-            {active ? `${affect} SYNTHESIS` : speaking ? 'VOCALIZING' : ''}
+            {active ? `${affect}` : speaking ? 'VOCAL' : ''}
           </motion.span>
-          {active && (
-            <div className="mt-3 h-0.5 bg-zinc-100 dark:bg-white/10 w-32 mx-auto rounded-full overflow-hidden">
-              <motion.div 
-                animate={{ x: ["-100%", "100%"] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                className="h-full w-1/2 bg-zinc-900 dark:bg-white"
-              />
-            </div>
-          )}
         </div>
       </div>
     </div>

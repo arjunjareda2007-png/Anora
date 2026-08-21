@@ -10,15 +10,33 @@ export const safeLocalStorage = {
   setItem: (key: string, value: string): boolean => {
     let valueToSave = value;
     
+    // Emergency: If value is absurdly large (> 4MB), skip saving to prevent crash
+    if (value.length > 4 * 1024 * 1024) {
+      console.warn(`Neural info: Data object [${key}] exceeds safe threshold (${(value.length / 1024 / 1024).toFixed(2)}MB). Managing payloads...`);
+      if (key === 'anora_users_db') {
+        try {
+          const users = JSON.parse(value);
+          const pruned = users.map((u: any) => ({ ...u, avatar: u.avatar?.length > 50000 ? "" : u.avatar }));
+          valueToSave = JSON.stringify(pruned);
+        } catch (e) { return false; }
+      } else if (key.startsWith('anora_history_') || key.startsWith('anora_gallery_')) {
+        // Redact images if they are making the key too big
+        try {
+          const items = JSON.parse(value);
+          const pruned = Array.isArray(items) ? items.slice(-2) : items; // Keep only very last
+          valueToSave = JSON.stringify(pruned);
+        } catch (e) { return false; }
+      }
+    }
+
     // If we're saving the users DB, ensure it's not already too large
     if (key === 'anora_users_db') {
       try {
-        const users = JSON.parse(value);
-        if (users.length > 20) {
+        const users = JSON.parse(valueToSave);
+        if (users.length > 15) {
           console.warn('Neural database overflow. Pruning input users list...');
-          // Keep owner and most recent users
           const owner = users.find((u: any) => u.role === 'OWNER');
-          const others = users.filter((u: any) => u.role !== 'OWNER').slice(-15);
+          const others = users.filter((u: any) => u.role !== 'OWNER').slice(-10);
           const pruned = owner ? [owner, ...others] : others;
           valueToSave = JSON.stringify(pruned);
         }
@@ -34,30 +52,22 @@ export const safeLocalStorage = {
         
         const keys = Object.keys(localStorage);
         
-        // 1. Prune chat sessions (usually the largest)
-        const sessionKeys = keys.filter(k => k.startsWith('anora_sessions_'));
-        sessionKeys.forEach(k => {
+        // 1. Prune visual repositories (usually the largest)
+        const galleryKeys = keys.filter(k => k.startsWith('anora_gallery_'));
+        galleryKeys.forEach(k => {
           try {
-            const sessions = JSON.parse(localStorage.getItem(k) || '[]');
-            const prunedSessions = sessions.map((s: any) => ({
-              ...s,
-              messages: s.messages.slice(-2) // Keep only last 2 messages
-            })).slice(-1); // Keep only last 1 session
-            localStorage.setItem(k, JSON.stringify(prunedSessions));
-          } catch (err) {
-            localStorage.removeItem(k);
-          }
+            const gallery = JSON.parse(localStorage.getItem(k) || '[]');
+            localStorage.setItem(k, JSON.stringify(gallery.slice(0, 2))); // Keep only 2 assets
+          } catch (err) { localStorage.removeItem(k); }
         });
-
-        // 2. Prune Gemini history
+        
+        // 2. Prune neural history
         const historyKeys = keys.filter(k => k.startsWith('anora_history_'));
         historyKeys.forEach(k => {
           try {
             const history = JSON.parse(localStorage.getItem(k) || '[]');
             localStorage.setItem(k, JSON.stringify(history.slice(-2))); // Keep only last 2 turns
-          } catch (err) {
-            localStorage.removeItem(k);
-          }
+          } catch (err) { localStorage.removeItem(k); }
         });
 
         // 3. Prune users database aggressively
@@ -68,11 +78,9 @@ export const safeLocalStorage = {
             const currentUserSession = JSON.parse(localStorage.getItem('anora_session') || 'null');
             const essentialUsers = users.filter((u: any) => 
               u.id === currentUserSession?.id || u.role === 'OWNER'
-            ).slice(0, 3);
+            ).map((u: any) => ({ ...u, avatar: u.avatar?.length > 100000 ? "" : u.avatar }));
             localStorage.setItem('anora_users_db', JSON.stringify(essentialUsers));
-          } catch (err) {
-            localStorage.removeItem('anora_users_db');
-          }
+          } catch (err) { localStorage.removeItem('anora_users_db'); }
         }
         
         // Try again
@@ -81,7 +89,7 @@ export const safeLocalStorage = {
           return true;
         } catch (retryErr) {
           // 4. Nuclear option: Clear everything except the key we are trying to save
-          console.warn('Neural storage still full. Nuclear pruning initiated...');
+          console.warn('Neural storage critical. Purging all collateral data...');
           keys.forEach(k => {
             if (k !== key && k !== 'anora_session') {
               localStorage.removeItem(k);
@@ -92,23 +100,22 @@ export const safeLocalStorage = {
             localStorage.setItem(key, valueToSave);
             return true;
           } catch (finalErr) {
-            // 5. Final attempt: Truncate the value itself if it's still too large
+            // 5. Final attempt: Truncate current value
             if (key === 'anora_users_db') {
                try {
                  const users = JSON.parse(valueToSave);
                  const currentUserSession = JSON.parse(localStorage.getItem('anora_session') || 'null');
-                 const minimal = users.filter((u: any) => u.id === currentUserSession?.id);
+                 const minimal = users.filter((u: any) => u.id === currentUserSession?.id).map((u: any) => ({ ...u, avatar: "" }));
                  localStorage.setItem(key, JSON.stringify(minimal));
                  return true;
                } catch (e) {}
             }
             
-            console.error('Neural storage critical failure. Quota cannot be recovered.', finalErr);
+            console.error('Neural storage rejection: Data too large for sovereign allocation.', finalErr);
             return false;
           }
         }
       }
-      console.error('Neural storage error:', e);
       return false;
     }
   },
@@ -132,16 +139,55 @@ export const safeLocalStorage = {
 };
 
 /**
- * Prunes a user object to keep its size manageable.
+ * Prunes a user object to keep its size manageable and ensures no undefined values for Firestore.
  */
 export const pruneUser = (user: any) => {
   if (!user) return user;
   
-  const pruned = { ...user };
+  const pruned: any = { ...user };
+  
+  // Ensure required fields for Firestore are not undefined
+  pruned.bio = pruned.bio || "";
+  pruned.avatar = pruned.avatar || "";
+  pruned.dob = pruned.dob || "";
+  pruned.phoneNumber = pruned.phoneNumber || "";
+
+  // Remove any remaining undefined values recursively
+  Object.keys(pruned).forEach(key => {
+    if (pruned[key] === undefined) {
+      delete pruned[key];
+    } else if (pruned[key] && typeof pruned[key] === 'object' && !Array.isArray(pruned[key])) {
+      // Clean nested objects (like preferences)
+      Object.keys(pruned[key]).forEach(subKey => {
+        if (pruned[key][subKey] === undefined) {
+          delete pruned[key][subKey];
+        }
+      });
+    }
+  });
   
   // Limit memory items
   if (pruned.memory && pruned.memory.length > 20) {
     pruned.memory = pruned.memory.slice(-20);
+  }
+
+  // Prune high-res avatars to prevent storage bloat
+  if (pruned.avatar && pruned.avatar.length > 50000) {
+    console.warn(`Neural avatar overflow for ${pruned.name}. Redacting high-res visual payload.`);
+    pruned.avatar = ""; 
+  }
+
+  // Prune persona avatars (Firestore 1MB document limit safety)
+  if (pruned.personaAvatars) {
+    const pAvatars = { ...pruned.personaAvatars };
+    Object.keys(pAvatars).forEach(p => {
+       // If any single persona avatar is > 60KB, it's too large for a 1MB doc with many objects
+       if (pAvatars[p] && pAvatars[p].length > 60000) {
+          console.warn(`Persona avatar [${p}] exceeds 60KB. Pruning for sync stability.`);
+          delete pAvatars[p];
+       }
+    });
+    pruned.personaAvatars = pAvatars;
   }
   
   // Limit reminders
@@ -165,4 +211,29 @@ export const pruneUser = (user: any) => {
   }
   
   return pruned;
+};
+
+/**
+ * Recursively removes undefined values from an object or array to make it Firestore-compatible.
+ */
+export const cleanFirestoreData = (data: any): any => {
+  if (data === undefined) return null; 
+  if (data === null) return null;
+  
+  if (Array.isArray(data)) {
+    return data.map(item => cleanFirestoreData(item));
+  }
+  
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    const clean: any = {};
+    Object.keys(data).forEach(key => {
+      const value = cleanFirestoreData(data[key]);
+      if (value !== undefined) {
+        clean[key] = value;
+      }
+    });
+    return clean;
+  }
+  
+  return data;
 };

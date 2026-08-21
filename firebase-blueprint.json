@@ -9,6 +9,11 @@
         "name": { "type": "string" },
         "email": { "type": "string", "format": "email" },
         "avatar": { "type": "string" },
+        "personaAvatars": { 
+          "type": "object", 
+          "additionalProperties": { "type": "string" },
+          "description": "Map of persona to base64 image"
+        },
         "role": { "type": "string", "enum": ["OWNER", "ADMIN", "USER", "PREMIUM"] },
         "tier": { "type": "string", "enum": ["FREE", "PRO", "LIFETIME", "CUSTOM"] },
         "bio": { "type": "string" },
@@ -32,12 +37,83 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "name", "email", "role", "tier", "preferences", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single message in a chat history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "anora", "system"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "thinking": { "type": "string" },
+        "affect": { "type": "string" }
+      }
+    },
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "A chat session with history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "messages": { "type": "array", "items": { "$ref": "Message" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "messages", "createdAt", "updatedAt"]
+    },
+    "Broadcast": {
+      "title": "Broadcast",
+      "description": "System-wide notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "type": { "type": "string", "enum": ["UPDATE", "FEATURE", "EXPIRATION", "SYSTEM"] },
+        "date": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "content", "type", "date"]
+    },
+    "AboutContent": {
+      "title": "AboutContent",
+      "description": "Information about Anora and the developer",
+      "type": "object",
+      "properties": {
+        "devBio": { "type": "string" },
+        "anoraBio": { "type": "string" },
+        "links": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Social media and other relevant links"
+        },
+        "avatars": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Global persona images"
+        }
+      }
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
       "description": "User documents"
+    },
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": "ChatSession",
+      "description": "Chat sessions and history for each user"
+    },
+    "/broadcasts/{broadcastId}": {
+      "schema": "Broadcast",
+      "description": "System-wide broadcasts"
+    },
+    "/config/{configId}": {
+      "schema": "AboutContent",
+      "description": "System configuration and global assets"
     }
   }
 }

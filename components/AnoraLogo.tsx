@@ -1,8 +1,46 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export const AnoraLogo: React.FC<{ size?: number, color?: string, showName?: boolean, className?: string, animate?: boolean }> = ({ size = 48, color = '#fff', showName = true, className = "", animate = false }) => {
+  const [isLongPressed, setIsLongPressed] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleStart = () => {
+    timerRef.current = setTimeout(() => {
+      setIsLongPressed(true);
+    }, 800); // 800ms for long press
+  };
+
+  const handleEnd = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    let autoCloseTimeout: NodeJS.Timeout;
+    if (isLongPressed) {
+      autoCloseTimeout = setTimeout(() => {
+        setIsLongPressed(false);
+      }, 6000); // Auto-close after 6 seconds (animation is ~1.5s + some display time)
+    }
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (autoCloseTimeout) clearTimeout(autoCloseTimeout);
+    };
+  }, [isLongPressed]);
+
   return (
-    <div className={`flex items-center gap-3 group select-none ${className}`}>
+    <>
+      <div 
+        className={`flex items-center gap-3 group select-none cursor-pointer ${className}`}
+        onMouseDown={handleStart}
+        onMouseUp={handleEnd}
+        onMouseLeave={handleEnd}
+        onTouchStart={handleStart}
+        onTouchEnd={handleEnd}
+      >
       <style>{`
         @keyframes rainbow-stroke {
           0% { stroke: #ff0000; }
@@ -89,6 +127,83 @@ export const AnoraLogo: React.FC<{ size?: number, color?: string, showName?: boo
           <div className="h-[1.5px] w-full bg-gradient-to-r from-transparent via-zinc-200 dark:via-white/20 to-transparent mt-2 group-hover:via-blue-500 transition-all duration-700"></div>
         </div>
       )}
-    </div>
+      </div>
+      
+      <AnimatePresence>
+        {isLongPressed && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] bg-black flex items-center justify-center overflow-hidden"
+            onClick={() => setIsLongPressed(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.5, rotate: -180, opacity: 0 }}
+              animate={{ 
+                scale: [0.5, 1.2, 1],
+                rotate: [ -180, 10, 0 ],
+                opacity: 1
+              }}
+              transition={{ 
+                duration: 1.5,
+                ease: "easeOut",
+                times: [0, 0.7, 1]
+              }}
+              className="relative"
+            >
+              {/* Background Glow */}
+              <motion.div 
+                animate={{ 
+                  scale: [1, 1.5, 1],
+                  opacity: [0.3, 0.6, 0.3]
+                }}
+                transition={{ duration: 4, repeat: Infinity }}
+                className="absolute inset-0 bg-blue-500/30 blur-[100px] rounded-full"
+              />
+              
+              <AnoraLogo size={300} showName={false} animate={true} className="relative z-10" />
+              
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1 }}
+                className="absolute -bottom-20 left-1/2 -translate-x-1/2 text-center"
+              >
+                <h2 className="text-4xl font-black font-outfit tracking-[0.5em] text-white mb-2">ANORA</h2>
+                <p className="text-xs font-bold text-zinc-500 tracking-[0.3em] uppercase">Neural Core Synchronized</p>
+              </motion.div>
+            </motion.div>
+
+            {/* Particle effects or extra flair */}
+            <div className="absolute inset-0 pointer-events-none">
+              {[...Array(20)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ 
+                    x: "50%", 
+                    y: "50%", 
+                    opacity: 1,
+                    scale: 0
+                  }}
+                  animate={{ 
+                    x: `${Math.random() * 100}%`,
+                    y: `${Math.random() * 100}%`,
+                    opacity: 0,
+                    scale: Math.random() * 2
+                  }}
+                  transition={{ 
+                    duration: 2 + Math.random() * 2,
+                    repeat: Infinity,
+                    delay: Math.random() * 2
+                  }}
+                  className="absolute w-1 h-1 bg-white rounded-full"
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 };

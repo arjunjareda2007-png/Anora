@@ -21,7 +21,11 @@ export const NeuralVision: React.FC<NeuralVisionProps> = ({ user, isOpen, onClos
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (ev) => setImage(ev.target?.result as string);
+      reader.onload = (ev) => {
+        const url = ev.target?.result as string;
+        setImage(url);
+        anoraService.saveToGallery(url);
+      };
       reader.readAsDataURL(file);
     }
   };

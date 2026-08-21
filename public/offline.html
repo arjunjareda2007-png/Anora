@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Anora | Sovereign Offline Mode</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    body {
+      background-color: #000000;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+      text-align: center;
+      overflow: hidden;
+    }
+    .logo-container {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 2rem;
+      animation: pulse 3s infinite ease-in-out;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(0.96); opacity: 0.8; }
+      50% { transform: scale(1.04); opacity: 1; }
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+      color: #ffffff;
+    }
+    p {
+      color: #a1a1aa;
+      font-size: 0.85rem;
+      max-width: 380px;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+    .btn {
+      background: #ffffff;
+      color: #000000;
+      font-weight: 800;
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 0.875rem 2rem;
+      border-radius: 9999px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 10px 25px -5px rgba(255,255,255,0.2);
+      transition: all 0.2s ease;
+    }
+    .btn:active {
+      transform: scale(0.95);
+    }
+    .version {
+      margin-top: 2rem;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: #52525b;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div class="logo-container">
+    <svg viewBox="0 0 100 100" width="100%" height="100%">
+      <defs>
+        <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.4"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle cx="50" cy="50" r="45" fill="url(#bgGlow)"/>
+      <circle cx="50" cy="50" r="46" stroke="#ffffff" stroke-width="0.75" stroke-dasharray="4 6" opacity="0.4"/>
+      <path d="M50 15 L85 85 M50 15 L15 85 M15 85 L85 85" stroke="#ffffff" stroke-width="0.5" opacity="0.25"/>
+      <path d="M50 20 L80 80 H20 L50 20 Z" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M38 62 H62" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="50" cy="45" r="6" fill="#3b82f6"/>
+      <circle cx="50" cy="45" r="3" fill="#ffffff"/>
+    </svg>
+  </div>
+  <h1>Offline Sovereign State</h1>
+  <p>Anora is running in localized mode. Connect to the network to synchronize active neural intelligence.</p>
+  <button class="btn" onclick="window.location.reload()">Reconnect Synapse</button>
+  <div class="version">Anora Protocol v13.05.2007</div>
+
+  <script>
+    window.addEventListener('online', function() {
+      window.location.reload();
+    });
+  </script>
+</body>
+</html>

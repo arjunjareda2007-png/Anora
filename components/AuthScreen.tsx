@@ -3,8 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { User, Role, SubscriptionTier, AiMood, IntelligenceLevel } from '../types';
 import { OWNER_EMAIL, OWNER_PASSWORD, ARJUN_DETAILED_BIO } from '../constants';
 import { AnoraLogo } from './AnoraLogo';
-import { signInWithGoogle, db, handleFirestoreError, OperationType } from '../firebase';
+import { Eye, EyeOff } from 'lucide-react';
+import { signInWithGoogle, auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { pruneUser, cleanFirestoreData, safeLocalStorage } from '../src/utils/storage';
 
 interface AuthScreenProps {
   onLogin: (user: User) => void;
@@ -20,6 +22,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [phase, setPhase] = useState(0); // 0: Start, 1: Form, 2: Neural Booting, 3: Recovery
   const [recoverySuccess, setRecoverySuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setPhase(1), 800);
@@ -27,19 +31,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   }, []);
 
   const getUsers = (): User[] => {
-    const data = localStorage.getItem('anora_users_db');
+    const data = safeLocalStorage.getItem('anora_users_db');
     return data ? JSON.parse(data) : [];
   };
 
   const saveUser = (user: User) => {
     const users = getUsers();
     users.push(user);
-    localStorage.setItem('anora_users_db', JSON.stringify(users));
+    safeLocalStorage.setItem('anora_users_db', JSON.stringify(users));
     window.dispatchEvent(new Event('anora_database_updated'));
   };
 
   const updateUsers = (updatedUsers: User[]) => {
-    localStorage.setItem('anora_users_db', JSON.stringify(updatedUsers));
+    safeLocalStorage.setItem('anora_users_db', JSON.stringify(updatedUsers));
     window.dispatchEvent(new Event('anora_database_updated'));
   };
 
@@ -60,9 +64,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
       } else {
         // Check local storage as fallback
         const users = getUsers();
-        existingUser = users.find(u => u.email.toLowerCase() === emailLower);
+        const found = users.find(u => u.email.toLowerCase() === emailLower);
         
-        if (!existingUser) {
+        if (found) {
+          existingUser = { ...found, id: firebaseUser.uid };
+        } else {
           const isOwner = emailLower === OWNER_EMAIL;
           const firstName = (firebaseUser.displayName || 'User').split(' ')[0].toLowerCase();
           // Default DOB to 13 May to match the user's example logic if not known
@@ -103,7 +109,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
         }
         // Save to Firestore
         try {
-          await setDoc(doc(db, 'users', firebaseUser.uid), existingUser);
+          const pruned = cleanFirestoreData(pruneUser(existingUser));
+          await setDoc(doc(db, 'users', firebaseUser.uid), pruned);
         } catch (syncErr) {
           handleFirestoreError(syncErr, OperationType.WRITE, `users/${firebaseUser.uid}`);
         }
@@ -162,11 +169,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             };
             saveUser(owner);
           }
-          // Sync to Firestore
-          try {
-            await setDoc(doc(db, 'users', owner.id), owner);
-          } catch (syncErr) {
-            handleFirestoreError(syncErr, OperationType.WRITE, `users/${owner.id}`);
+          // Sync to Firestore if authenticated
+          if (auth.currentUser && auth.currentUser.uid === owner.id) {
+            try {
+              const pruned = cleanFirestoreData(pruneUser(owner));
+              await setDoc(doc(db, 'users', owner.id), pruned);
+            } catch (syncErr) {
+              handleFirestoreError(syncErr, OperationType.WRITE, `users/${owner.id}`);
+            }
           }
           setPhase(2);
           setTimeout(() => onLogin(owner!), 2500);
@@ -179,11 +189,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
         } else if (found.password !== password) {
           setError('Security mismatch. Verify encryption key.');
         } else {
-          // Sync to Firestore
-          try {
-            await setDoc(doc(db, 'users', found.id), found);
-          } catch (syncErr) {
-            handleFirestoreError(syncErr, OperationType.WRITE, `users/${found.id}`);
+          // Sync to Firestore if authenticated
+          if (auth.currentUser && auth.currentUser.uid === found.id) {
+            try {
+              const pruned = cleanFirestoreData(pruneUser(found));
+              await setDoc(doc(db, 'users', found.id), pruned);
+            } catch (syncErr) {
+              handleFirestoreError(syncErr, OperationType.WRITE, `users/${found.id}`);
+            }
           }
           setPhase(2);
           setTimeout(() => onLogin(found), 2000);
@@ -224,11 +237,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             projects: []
           };
           saveUser(newUser);
-          // Sync to Firestore
-          try {
-            await setDoc(doc(db, 'users', newUser.id), newUser);
-          } catch (syncErr) {
-            handleFirestoreError(syncErr, OperationType.WRITE, `users/${newUser.id}`);
+          // Sync to Firestore if authenticated
+          if (auth.currentUser && auth.currentUser.uid === newUser.id) {
+            try {
+              const pruned = cleanFirestoreData(pruneUser(newUser));
+              await setDoc(doc(db, 'users', newUser.id), pruned);
+            } catch (syncErr) {
+              handleFirestoreError(syncErr, OperationType.WRITE, `users/${newUser.id}`);
+            }
           }
           setPhase(2);
           setTimeout(() => onLogin(newUser), 2000);
@@ -260,11 +276,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
         updatedUsers[foundIdx] = updatedUser;
         updateUsers(updatedUsers);
         
-        // Sync to Firestore
-        try {
-          await updateDoc(doc(db, 'users', updatedUser.id), { password: password });
-        } catch (syncErr) {
-          handleFirestoreError(syncErr, OperationType.UPDATE, `users/${updatedUser.id}`);
+        // Sync to Firestore if authenticated
+        if (auth.currentUser && auth.currentUser.uid === updatedUser.id) {
+          try {
+            await updateDoc(doc(db, 'users', updatedUser.id), { password: password });
+          } catch (syncErr) {
+            handleFirestoreError(syncErr, OperationType.UPDATE, `users/${updatedUser.id}`);
+          }
         }
 
         setRecoverySuccess(true);
@@ -375,21 +393,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
 
                   <div className="animate-in fade-in slide-in-from-top-2 duration-700">
                     <label className="block text-[6px] sm:text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-0.5 ml-2">Access Key</label>
-                    <input
-                      type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-3 py-2 sm:px-5 sm:py-4 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-[10px] sm:text-sm placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
-                      placeholder="••••••••"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)}
+                        className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-3 py-2 sm:px-5 sm:py-4 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-[10px] sm:text-sm placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
 
                   {!isLogin && (
                     <div className="animate-in fade-in slide-in-from-top-2 duration-900">
                       <label className="block text-[6px] sm:text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-0.5 ml-2">Verify Key</label>
-                      <input
-                        type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-3 py-2 sm:px-5 sm:py-4 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-[10px] sm:text-sm placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
-                        placeholder="••••••••"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showConfirmPassword ? "text" : "password"} required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-3 py-2 sm:px-5 sm:py-4 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-[10px] sm:text-sm placeholder:text-zinc-300 dark:placeholder:text-zinc-700"
+                          placeholder="••••••••"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+                        >
+                          {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -467,11 +503,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                     </div>
                     <div>
                       <label className="block text-[6px] sm:text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-0.5 sm:mb-2 ml-2">New Access Key</label>
-                      <input
-                        type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-                        className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-3 py-2 sm:px-6 sm:py-5 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-[10px] sm:text-sm"
-                        placeholder="Define new encryption sequence..."
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)}
+                          className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-3 py-2 sm:px-6 sm:py-5 text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/20 transition-all text-[10px] sm:text-sm"
+                          placeholder="Define new encryption sequence..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-6 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+                        >
+                          {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <div className="pt-1 sm:pt-6 flex flex-col gap-1.5 sm:gap-4">

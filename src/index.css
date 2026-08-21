@@ -109,3 +109,25 @@ html, body {
 /* Utility classes that might be missing from Tailwind default if not scanned properly */
 .pt-safe { padding-top: var(--sat); }
 .pb-safe { padding-bottom: var(--sab); }
+ 
+/* Rainbow Mode */
+@keyframes rainbow-border {
+    0% { border-color: #ff0000; }
+    17% { border-color: #ff00ff; }
+    33% { border-color: #0000ff; }
+    50% { border-color: #00ffff; }
+    67% { border-color: #00ff00; }
+    84% { border-color: #ffff00; }
+    100% { border-color: #ff0000; }
+}
+
+.rainbow-mode .rainbow-box {
+    border-width: 2px !important;
+    animation: rainbow-border 4s linear infinite;
+}
+
+.rainbow-mode button, 
+.rainbow-mode .interactive-element {
+    border-width: 2px !important;
+    animation: rainbow-border 4s linear infinite;
+}

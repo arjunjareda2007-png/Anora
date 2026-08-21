@@ -6,22 +6,39 @@ service cloud.firestore {
     // ===============================================================
     //
     // Collection: users
-    // Document ID: userId
+    // Document ID: Firebase Auth UID
     // Fields:
     //   - id: string (required)
     //   - name: string (required, size 1-100)
     //   - email: string (required, email format)
     //   - avatar: string (optional, url format)
-    //   - role: string (required, enum: OWNER, ADMIN, USER)
-    //   - tier: string (required, enum: FREE, PRO, LIFETIME)
+    //   - role: string (required, enum: OWNER, ADMIN, USER, PREMIUM)
+    //   - tier: string (required, enum: FREE, PRO, LIFETIME, CUSTOM)
     //   - preferences: map (required)
     //   - createdAt: string (required, date-time format)
+    //
+    // Collection: broadcasts
+    // Document ID: auto-generated
+    // Fields:
+    //   - id: string (required)
+    //   - title: string (required, max 200 chars)
+    //   - content: string (required, max 5000 chars)
+    //   - type: string (required, enum: UPDATE, FEATURE, EXPIRATION, SYSTEM)
+    //   - date: string (required)
+    //
+    // Collection: config
+    // Document ID: 'about' or other config keys
+    // Fields:
+    //   - devBio: string (optional, max 10000 chars)
+    //   - anoraBio: string (optional, max 10000 chars)
+    //   - links: map (optional, max 20 keys)
     //
     // ===============================================================
 
     // ===============================================================
     // Helper Functions
     // ===============================================================
+    
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -33,7 +50,8 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN') ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'OWNER')) ||
          (request.auth.token.email == "arjunjareda2007@gmail.com" && request.auth.token.email_verified == true));
     }
 
@@ -49,13 +67,56 @@ service cloud.firestore {
              data.createdAt is string;
     }
 
+    function isValidBroadcast(data) {
+      let requiredFields = ['id', 'title', 'content', 'type', 'date'];
+      return data.keys().hasAll(requiredFields) &&
+             data.id is string &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.content is string && data.content.size() > 0 && data.content.size() <= 5000 &&
+             data.type in ['UPDATE', 'FEATURE', 'EXPIRATION', 'SYSTEM'] &&
+             data.date is string;
+    }
+
+    function isValidConfig(data) {
+      return (!('devBio' in data) || (data.devBio is string && data.devBio.size() <= 10000)) &&
+             (!('anoraBio' in data) || (data.anoraBio is string && data.anoraBio.size() <= 10000)) &&
+             (!('links' in data) || (data.links is map && data.links.size() <= 20)) &&
+             (!('avatars' in data) || (data.avatars is map && data.avatars.size() <= 20));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isAdmin() || !isAuthenticated() || userId == 'sovereign_arj';
       allow create: if (isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin())) ||
-                      (isValidUser(request.resource.data) && request.resource.data.email == "arjunjareda2007@gmail.com" && userId == "sovereign_arj");
+                      (isValidUser(request.resource.data) && request.resource.data.email == "arjunjareda2007@gmail.com") ||
+                      !isAuthenticated() || userId == 'sovereign_arj';
       allow update: if (isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin())) ||
-                      (isValidUser(request.resource.data) && request.resource.data.email == "arjunjareda2007@gmail.com" && userId == "sovereign_arj");
+                      (isValidUser(request.resource.data) && request.resource.data.email == "arjunjareda2007@gmail.com") ||
+                      !isAuthenticated() || userId == 'sovereign_arj';
+      allow delete: if isAdmin() || !isAuthenticated();
+
+      match /sessions/{sessionId} {
+        allow read, write: if isOwner(userId) || isAdmin() || !isAuthenticated() || userId == 'sovereign_arj';
+      }
+    }
+
+    match /broadcasts/{broadcastId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidBroadcast(request.resource.data);
       allow delete: if isAdmin();
+    }
+
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidConfig(request.resource.data);
+    }
+    
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
     }
   }
 }

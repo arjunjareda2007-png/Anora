@@ -1,9 +1,11 @@
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { Message, Role, SubscriptionTier, GroundingSource } from '../types';
+import { Message, Role, SubscriptionTier, GroundingSource, Persona } from '../types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { motion, AnimatePresence } from 'motion/react';
+import { VerificationTick } from './VerificationTick';
+import { AnoraLogo } from './AnoraLogo';
 import { 
   Play, 
   Download, 
@@ -14,18 +16,20 @@ import {
   Trash2, 
   ChevronRight,
   Volume2,
-  CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  CheckCircle2
 } from 'lucide-react';
 import { PremiumBadge } from './PremiumBadge';
-import { AnoraLogo } from './AnoraLogo';
+import { PERSONA_IMAGES } from '../src/constants/personas';
 
 interface MessageListProps {
   messages: Message[];
   isThinking: boolean;
+  isStreaming?: boolean;
   ownerName: string;
   isOwnerView: boolean;
   userTier: SubscriptionTier;
+  isVerified?: boolean;
   onVocalize?: (id: string, content: string, affect?: any) => void;
   onEditMessage?: (id: string, newContent: string) => void;
   onDeleteMessage?: (id: string) => void;
@@ -33,6 +37,10 @@ interface MessageListProps {
   onSaveToReminders?: (content: string) => void;
   onRegenerate?: (id: string) => void;
   speakingId?: string | null;
+  currentMood?: string;
+  persona?: Persona;
+  personaAvatars?: Record<string, string>;
+  onViewImage?: (url: string) => void;
 }
 
 const decode = (base64: string) => {
@@ -134,7 +142,7 @@ const GroundingSources: React.FC<{ sources: GroundingSource[] }> = ({ sources })
 };
 
 export const MessageList: React.FC<MessageListProps> = ({ 
-  messages, isThinking, ownerName, isOwnerView, userTier, onVocalize, onEditMessage, onDeleteMessage, onSaveToMemory, onSaveToReminders, onRegenerate, speakingId
+  messages,  isThinking, isStreaming, ownerName, isOwnerView, userTier, isVerified, onVocalize, onEditMessage, onDeleteMessage, onSaveToMemory, onSaveToReminders, onRegenerate, speakingId, currentMood, persona, personaAvatars, onViewImage
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -173,62 +181,91 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   const isPremium = userTier === SubscriptionTier.PRO || userTier === SubscriptionTier.LIFETIME || isOwnerView;
 
+  const uniqueMessages = useMemo(() => {
+    return messages.filter((msg, idx, self) => self.findIndex(t => t.id === msg.id) === idx);
+  }, [messages]);
+
   return (
-    <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 sm:px-8 pt-10 pb-20 space-y-10 max-w-5xl mx-auto w-full scroll-smooth no-scrollbar relative z-10 touch-pan-y">
-      {messages.map((msg, index) => {
+    <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 sm:px-6 pt-4 pb-20 space-y-3.5 max-w-5xl mx-auto w-full scroll-smooth no-scrollbar relative z-10 touch-pan-y">
+      {uniqueMessages.map((msg, index) => {
         const isUser = msg.role === 'user';
         const isAnora = msg.role === 'anora';
+        const isLastMessage = index === uniqueMessages.length - 1;
         const isSpeaking = speakingId === msg.id;
         const isEditing = editingId === msg.id;
         const isMenuOpen = contextMenuId === msg.id;
         
+        // Literal interpretation: "If anora is responding (streaming) then just show three dots"
+        // We'll hide the content of Anora's last message if we're currently streaming it.
+        const shouldShowDotsInstead = isAnora && isLastMessage && isStreaming;
+        
         let bubbleClass = isUser 
-          ? (isOwnerView ? "bg-zinc-900 border-amber-500/50 text-white shadow-xl rounded-tr-none" : isPremium ? "bg-indigo-600 border-indigo-500 text-white rounded-tr-none" : "bg-zinc-800 text-white border-zinc-700 rounded-tr-none")
+          ? (isOwnerView ? "bg-zinc-950 dark:bg-zinc-100/10 text-white border border-amber-500/10 rounded-xl rounded-tr-none" : isPremium ? "bg-zinc-900 dark:bg-white/10 text-white dark:text-zinc-100 rounded-xl rounded-tr-none" : "bg-zinc-800 text-white rounded-xl rounded-tr-none")
           : (isOwnerView 
-              ? "bg-zinc-50 border-amber-500/10 text-zinc-900 rounded-tl-none backdrop-blur-3xl shadow-sm" 
-              : "bg-zinc-100/80 dark:bg-zinc-900/90 text-zinc-900 dark:text-white border-zinc-200/50 dark:border-white/10 rounded-tl-none backdrop-blur-3xl shadow-lg");
+              ? "bg-zinc-100/50 dark:bg-zinc-900/40 text-zinc-900 dark:text-zinc-100 border border-zinc-200/10 dark:border-white/5 rounded-xl rounded-tl-none" 
+              : "bg-zinc-50/70 dark:bg-zinc-900/20 text-zinc-900 dark:text-zinc-100 border border-zinc-100/40 dark:border-white/5 rounded-xl rounded-tl-none");
 
-        // Enhanced fade-in for Anora's responses
+        // Enhanced fade-in for Anora's responses: speed it up significantly for a snappier feel
         const animationClass = isAnora 
-          ? "animate-in fade-in slide-in-from-bottom-8 duration-1000 ease-out-expo" 
-          : "animate-in fade-in slide-in-from-bottom-4 duration-500";
+          ? "animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out-expo" 
+          : "animate-in fade-in slide-in-from-bottom-1 duration-200";
 
         return (
-          <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${animationClass} relative`} style={{ animationDelay: `${isAnora ? 100 : index * 30}ms` }}>
-            <div className={`max-w-[92%] sm:max-w-[85%] group relative ${isMenuOpen ? 'z-[150] scale-[1.02]' : 'z-10'} transition-all duration-300`}>
-              <div className={`flex items-center gap-3 mb-2 px-2 transition-all opacity-60 group-hover:opacity-100 ${isUser ? 'flex-row-reverse' : ''}`}>
+          <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${animationClass} relative`} style={{ animationDelay: `${isAnora ? 20 : index * 10}ms` }}>
+            <div className={`max-w-[92%] sm:max-w-[85%] group relative ${isMenuOpen ? 'z-[150] scale-[1.01]' : 'z-10'} transition-all duration-300`}>
+              <div className={`flex items-center gap-3 mb-1 px-2 transition-all opacity-50 group-hover:opacity-100 ${isUser ? 'flex-row-reverse' : ''}`}>
                 <div className="flex items-center gap-2">
                   <span className={`text-[9px] font-bold uppercase tracking-[0.2em] ${isUser ? (isOwnerView ? 'text-amber-600' : isPremium ? 'text-indigo-600' : 'text-zinc-600') : 'text-zinc-400 dark:text-zinc-500'}`}>
                     {isUser ? (isOwnerView ? 'Sovereign' : ownerName.split(' ')[0]) : (msg.images && msg.images.length > 0 ? 'Synthesis' : 'Anora')}
                   </span>
+                  {isUser && (
+                    <VerificationTick 
+                      role={isOwnerView ? Role.OWNER : Role.USER} 
+                      tier={userTier} 
+                      isVerified={isVerified}
+                      size={12} 
+                    />
+                  )}
                   {isUser && <PremiumBadge role={isOwnerView ? Role.OWNER : Role.USER} tier={userTier} />}
                 </div>
                 <span className="text-[8px] text-zinc-300 dark:text-zinc-600 font-bold uppercase tracking-widest">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               
               {msg.images && msg.images.length > 0 && !isEditing && (
-                <div className={`grid gap-2 mb-3 animate-in zoom-in-95 duration-700 ${msg.images.length === 4 ? 'grid-cols-2' : 'flex flex-wrap'} ${isUser ? 'justify-end' : 'justify-start'}`}>
+                <div className={`grid gap-2 mb-3 animate-in zoom-in-95 duration-500 ${msg.images.length === 4 ? 'grid-cols-2' : 'flex flex-wrap'} ${isUser ? 'justify-end' : 'justify-start'}`}>
                   {msg.images.map((img, i) => (
                     <div key={i} className={`relative group/img overflow-hidden rounded-[1.8rem] sm:rounded-[2.5rem] border shadow-md transition-all hover:border-zinc-400 ${isOwnerView ? 'border-amber-500/20' : 'border-zinc-200 dark:border-white/10'} ${msg.images && msg.images.length === 1 ? 'w-64 h-64 sm:w-80 sm:h-80' : 'w-full aspect-square'}`}>
                       <img src={img} alt="V" className="w-full h-full object-cover transition-transform duration-[2s] group-hover/img:scale-110" />
-                      <a href={img} download={`anora_full_res_${Date.now()}.png`} className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-3 bg-white/90 dark:bg-black/90 backdrop-blur-md rounded-2xl text-zinc-900 dark:text-white opacity-0 group-hover/img:opacity-100 transition-all shadow-2xl active:scale-90"><span className="text-[8px] font-black uppercase tracking-widest">Full Quality</span></a>
+                      
+                      {/* Neural Watermark */}
+                      <div className="absolute bottom-4 right-4 pointer-events-none z-10 opacity-60 group-hover/img:opacity-100 transition-opacity">
+                        <AnoraLogo size={24} showName={false} />
+                      </div>
+
+                      <a href={img} download={`anora_full_res_${Date.now()}.png`} className="absolute bottom-4 right-4 flex items-center gap-2 px-4 py-3 bg-white/90 dark:bg-black/90 backdrop-blur-md rounded-2xl text-zinc-900 dark:text-white opacity-0 group-hover/img:opacity-100 transition-all shadow-2xl active:scale-90 z-20"><span className="text-[8px] font-black uppercase tracking-widest">Full Quality</span></a>
                     </div>
                   ))}
                 </div>
               )}
 
-              <div onMouseDown={() => handleTouchStart(msg.id)} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd} onTouchStart={() => handleTouchStart(msg.id)} onTouchEnd={handleTouchEnd} className={`rounded-[2rem] sm:rounded-[3rem] px-6 sm:px-10 py-5 sm:py-8 text-sm sm:text-base leading-relaxed shadow-sm transition-all duration-700 relative ring-1 ring-black/5 select-none touch-pan-y ${bubbleClass} ${isMenuOpen ? 'ring-2 ring-zinc-900/10' : ''}`}>
+              <div onMouseDown={() => handleTouchStart(msg.id)} onMouseUp={handleTouchEnd} onMouseLeave={handleTouchEnd} onTouchStart={() => handleTouchStart(msg.id)} onTouchEnd={handleTouchEnd} className={`rounded-xl sm:rounded-2xl px-3.5 sm:px-4.5 py-1.5 sm:py-2 text-sm sm:text-[14px] font-medium leading-relaxed transition-all duration-500 relative select-none touch-pan-y ${bubbleClass} ${isMenuOpen ? 'ring-2 ring-zinc-900/10' : ''}`}>
                 {isEditing ? (
-                  <div className="space-y-4 py-2 animate-in fade-in duration-300">
-                    <textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} className="w-full bg-white/40 dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded-2xl p-4 text-zinc-900 dark:text-white outline-none focus:border-zinc-400 transition-all resize-none min-h-[100px]" autoFocus />
+                  <div className="space-y-4 py-1 animate-in fade-in duration-200">
+                    <textarea value={editValue} onChange={(e) => setEditValue(e.target.value)} className="w-full bg-white/40 dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded-xl p-3 text-zinc-900 dark:text-white outline-none focus:border-zinc-400 transition-all resize-none min-h-[80px]" autoFocus />
                     <div className="flex gap-2 justify-end">
-                      <button onClick={() => setEditingId(null)} className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">Abort</button>
-                      <button onClick={handleSaveEdit} className={`px-6 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all ${isOwnerView ? 'bg-amber-500 text-black' : 'bg-zinc-900 dark:bg-white dark:text-black text-white'}`}>Sync</button>
+                      <button onClick={() => setEditingId(null)} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">Abort</button>
+                      <button onClick={handleSaveEdit} className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all ${isOwnerView ? 'bg-amber-500 text-black' : 'bg-zinc-900 dark:bg-white dark:text-black text-white'}`}>Sync</button>
                     </div>
                   </div>
+                ) : shouldShowDotsInstead ? (
+                  <div className="flex gap-1.5 py-1.5">
+                    <motion.div animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, ease: "easeInOut" }} className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500" />
+                    <motion.div animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, ease: "easeInOut", delay: 0.2 }} className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500" />
+                    <motion.div animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, ease: "easeInOut", delay: 0.4 }} className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500" />
+                  </div>
                 ) : (
-                  <div className="space-y-4">
-                    <div className={`prose prose-zinc dark:prose-invert max-w-none font-medium tracking-tight ${isAnora ? 'animate-in fade-in duration-1000 delay-300' : ''}`}>
+                  <div className="space-y-2">
+                    <div className={`prose prose-zinc dark:prose-invert max-w-none font-medium tracking-tight ${isAnora ? 'animate-in fade-in duration-300' : ''}`}>
                       <ReactMarkdown 
                         remarkPlugins={[remarkGfm]}
                         components={{
@@ -268,6 +305,21 @@ export const MessageList: React.FC<MessageListProps> = ({
                     </div>
                     {msg.audioUrl && <VocalPlayer audioUrl={msg.audioUrl} msgId={msg.id} />}
                     {isAnora && msg.sources && <GroundingSources sources={msg.sources} />}
+                    
+                    {/* Mood Indicator in Message */}
+                    {currentMood && (
+                      <div className="absolute bottom-4 right-6 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <div className={`w-1 h-1 rounded-full ${
+                          currentMood === 'HAPPY' ? 'bg-emerald-500' :
+                          currentMood === 'SAD' ? 'bg-blue-500' :
+                          currentMood === 'ANGRY' ? 'bg-red-500' :
+                          currentMood === 'MOTIVATED' ? 'bg-amber-500' :
+                          currentMood === 'STRESSED' ? 'bg-orange-500' :
+                          'bg-zinc-400'
+                        }`}></div>
+                        <span className="text-[6px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">{currentMood}</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -278,9 +330,26 @@ export const MessageList: React.FC<MessageListProps> = ({
                           whileHover={{ scale: 1.1, rotate: 180 }}
                           whileTap={{ scale: 0.9 }}
                           onClick={() => onRegenerate(msg.id)}
-                          className="flex items-center justify-center w-10 h-10 rounded-full bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-all shadow-sm group/reg"
+                          className="flex items-center justify-center gap-2 px-3 h-10 rounded-full bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-all shadow-sm group/reg"
                           title="Regenerate Response"
                         >
+                          {persona && (
+                            <div 
+                              className="w-6 h-6 rounded-full overflow-hidden border border-white/20 shadow-sm cursor-zoom-in active:scale-90 transition-transform"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const url = personaAvatars?.[persona] || (PERSONA_IMAGES as any)[persona] || PERSONA_IMAGES.DEFAULT;
+                                onViewImage?.(url);
+                              }}
+                            >
+                              <img 
+                                src={personaAvatars?.[persona] || (PERSONA_IMAGES as any)[persona] || PERSONA_IMAGES.DEFAULT} 
+                                alt={persona} 
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                          )}
                           <RefreshCw className="w-4 h-4 transition-transform duration-700" />
                         </motion.button>
                       )}
@@ -333,7 +402,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                               <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">Edit</span>
                             </button>
                           )}
-                          <button onClick={() => { if (navigator.share) { navigator.share({ text: msg.content }); } else { navigator.clipboard.writeText(msg.content); } setContextMenuId(null); }} className="flex flex-col items-center justify-center gap-2 p-3 hover:bg-zinc-50 dark:hover:bg-white/5 rounded-xl transition-colors group/item">
+                          <button onClick={() => { if (navigator.share) { navigator.share({ text: msg.content }).catch(err => console.log('Share dismissed', err)); } else { navigator.clipboard.writeText(msg.content); } setContextMenuId(null); }} className="flex flex-col items-center justify-center gap-2 p-3 hover:bg-zinc-50 dark:hover:bg-white/5 rounded-xl transition-colors group/item">
                             <ExternalLink className="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-white" />
                             <span className="text-[8px] font-black uppercase tracking-widest text-zinc-500">Share</span>
                           </button>
@@ -351,7 +420,17 @@ export const MessageList: React.FC<MessageListProps> = ({
           </div>
         );
       })}
-      {isThinking && <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-700"><div className={`bg-white dark:bg-zinc-900 border rounded-[1.8rem] rounded-tl-none px-6 py-4 shadow-sm ring-1 ring-black/5 ${isOwnerView ? 'border-amber-500/20' : 'border-zinc-100 dark:border-white/10'}`}><div className="flex gap-1.5"><div className={`w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:-0.3s] ${isOwnerView ? 'bg-amber-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}></div><div className={`w-1.5 h-1.5 rounded-full animate-bounce [animation-delay:-0.15s] ${isOwnerView ? 'bg-amber-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}></div><div className={`w-1.5 h-1.5 rounded-full animate-bounce ${isOwnerView ? 'bg-amber-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}></div></div></div></div>}
+      {isThinking && !isStreaming && (
+        <div className="flex justify-start px-4">
+          <div className="flex items-center gap-3">
+             <div className="flex gap-1.5 bg-black/5 dark:bg-white/5 rounded-2xl px-4 py-3 border border-black/5 dark:border-white/10 backdrop-blur-md">
+                 <motion.div animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, ease: "easeInOut" }} className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-600" />
+                 <motion.div animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, ease: "easeInOut", delay: 0.2 }} className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-600" />
+                 <motion.div animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, ease: "easeInOut", delay: 0.4 }} className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-600" />
+             </div>
+          </div>
+        </div>
+      )}
       {contextMenuId && <div onClick={() => setContextMenuId(null)} className="fixed inset-0 z-[140] bg-black/20 backdrop-blur-sm animate-in fade-in duration-300"></div>}
       
       <div ref={bottomRef} className="h-10" />

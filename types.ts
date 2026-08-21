@@ -9,12 +9,16 @@ export enum Role {
 export enum SubscriptionTier {
   LIFETIME = 'LIFETIME',
   PRO = 'PRO',
+  PLATINUM = 'PLATINUM',
+  DIAMOND = 'DIAMOND',
+  OWNER = 'OWNER',
   FREE = 'FREE',
   CUSTOM = 'CUSTOM'
 }
 
 export type AiMood = 'CALM' | 'ENERGIZED' | 'STRICT' | 'CREATIVE' | 'SOVEREIGN' | 'ENGINEERING' | string;
 export type IntelligenceLevel = 'LITE' | 'BALANCED' | 'DEEP';
+export type ColorMode = 'WHITE' | 'DARK' | 'BRIGHT' | 'COLOURFUL' | 'DIM' | 'AMOLED' | 'RAINBOW';
 export type AppTheme = 'OBSIDIAN' | 'NEURAL_NOISE' | 'MESH_GRADIENT' | 'MINIMAL' | 'SINGULARITY' | 'CYBERPUNK' | 'AURORA' | 'ECHO' | 'VINTAGE' | 'MIDNIGHT' | 'NEON_DREAM' | 'SOLARIS' | 'MONOCHROME' | 'EMERALD_CITY';
 export type AppFont = 'INTER' | 'OUTFIT';
 export type Persona = 'DEFAULT' | 'FRIEND' | 'TEACHER' | 'MENTOR' | 'GIRLFRIEND' | 'BOYFRIEND' | 'BROTHER' | 'SISTER' | 'SOVEREIGN_AI' | 'WIFE' | 'HUSBAND';
@@ -28,6 +32,7 @@ export interface TokenUsage {
   video: number;
   audio: number;
   lastReset: string;
+  tier?: string;
 }
 
 export interface UpgradeRequest {
@@ -128,8 +133,7 @@ export interface UserPreferences {
   soundEnabled: boolean;
   persona: Persona;
   arjunDirectives?: string;
-  // Added colorMode to support user interface theme variations
-  colorMode: 'WHITE' | 'DARK';
+  colorMode: ColorMode;
   onboardingComplete?: boolean;
 }
 
@@ -145,7 +149,9 @@ export interface User {
   tier: SubscriptionTier;
   customTierId?: string;
   avatar?: string;
+  isVerified?: boolean;
   preferences: UserPreferences;
+  personaAvatars?: Record<string, string>; // Map of persona to base64 image
   createdAt: string;
   reminders: Reminder[];
   notes: any[];
@@ -164,6 +170,14 @@ export interface ChatSession {
   messages: Message[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface Broadcast {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  type: 'UPDATE' | 'ALERT' | 'MAINTENANCE' | 'FEATURE';
 }
 
 export interface Message {

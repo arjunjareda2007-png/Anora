@@ -1,9 +1,12 @@
 {
-  "name": "AnoraAI",
-  "description": "The ultimate neural companion for Arjun Bharti Mina and authorized users.",
+  "name": "anoraaiarjun",
+  "description": "The ultimate sovereign neural companion created by Arjun Bharti Mina.",
   "requestFramePermissions": [
     "camera",
     "microphone",
     "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }

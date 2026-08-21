@@ -54,10 +54,10 @@ export class AnoraAI {
   private currentUser: User | null = null;
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
   }
 
-  private async callWithRetry<T>(fn: () => Promise<T>, retries = 7, delay = 3000): Promise<T> {
+  private async callWithRetry<T>(fn: () => Promise<T>, retries = 7, delay = 2500): Promise<T> {
     try {
       return await fn();
     } catch (err: any) {
@@ -71,12 +71,17 @@ export class AnoraAI {
                            errMsg.includes('resource_exhausted') ||
                            status === 'resource_exhausted' ||
                            err?.status === 429;
+
+      const isNetworkTransient = errMsg.includes('failed to fetch') ||
+                                errMsg.includes('network') ||
+                                errMsg.includes('timeout') ||
+                                errMsg.includes('connection');
       
-      if (isQuotaError && retries > 0) {
-        const jitter = Math.random() * 2000;
-        console.warn(`Neural Link saturated. Retrying in ${delay + jitter}ms... (${retries} attempts left)`);
+      if ((isQuotaError || isNetworkTransient) && retries > 0) {
+        const jitter = Math.random() * 1500;
+        console.warn(`[Anora Link] Transient anomaly. Retrying in ${Math.round(delay + jitter)}ms (${retries} retries left)...`);
         await wait(delay + jitter);
-        return this.callWithRetry(fn, retries - 1, delay * 2);
+        return this.callWithRetry(fn, retries - 1, delay * 1.5);
       }
       throw err;
     }
@@ -86,38 +91,96 @@ export class AnoraAI {
     this.currentUser = user;
   }
 
+  async generateTitle(messages: any[]): Promise<string> {
+    if (messages.length < 2) return "";
+    try {
+      return await this.callWithRetry(async () => {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+        const result = await ai.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: `Analyze the following chat history and generate a very short, catchy, and professional title (max 3-4 words) for this conversation.
+          Return ONLY the title, no quotes or extra text.
+          History: ${messages.slice(0, 10).map(m => `[${m.role}] ${m.content}`).join(' | ')}`,
+          config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+        });
+        return result.text?.trim() || "";
+      }, 2, 2000);
+    } catch (e) {
+      return "";
+    }
+  }
+
   async summarizeMemory(messages: any[]): Promise<NeuralMemoryItem[]> {
       if (messages.length < 4 || !this.currentUser) return [];
       try {
         return await this.callWithRetry(async () => {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-          const result = await ai.models.generateContent({
-              model: 'gemini-3-flash-preview',
-              contents: `Analyze history and extract long-term memories/preferences.
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+        const result = await ai.models.generateContent({
+            model: 'gemini-3.5-flash',
+              contents: `Analyze history and extract long-term memories/preferences for user ${this.currentUser?.name}.
+              Focus on: Name, interests, mood patterns, important life events, and specific preferences mentioned.
               Return JSON array: { 'content', 'category', 'strength' (1-5) }.
-              History: ${messages.slice(-10).map(m => `[${m.role}] ${m.content}`).join(' | ')}`,
+              History: ${messages.slice(-15).map(m => `[${m.role}] ${m.content}`).join(' | ')}`,
               config: { responseMimeType: 'application/json' }
           });
           const memories = JSON.parse(result.text || "[]");
-          return memories.map((m: any) => ({ ...m, id: `mem_${Date.now()}_${Math.random()}`, timestamp: new Date().toISOString() }));
+          return memories.map((m: any) => ({ 
+            id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, 
+            content: m.content,
+            category: m.category || 'PERSONAL',
+            strength: m.strength || 3,
+            timestamp: new Date().toISOString() 
+          }));
         }, 3, 5000);
       } catch (e) { 
         return []; 
       }
   }
 
+  async detectMood(text: string): Promise<string> {
+    try {
+      return await this.callWithRetry(async () => {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+        const result = await ai.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: `Detect the user's mood from this message: "${text}".
+          Return ONLY one word from this list: HAPPY, SAD, ANGRY, MOTIVATED, STRESSED, CALM, CURIOUS.`,
+          config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+        });
+        return result.text?.trim().toUpperCase() || 'CALM';
+      }, 2, 2000);
+    } catch (e) {
+      return 'CALM';
+    }
+  }
+
   async speak(text: string, voiceName: string = 'Kore', affect: NeuralAffect = 'SOVEREIGN'): Promise<string> {
     const cleanText = sanitizeForTTS(text);
     const emotionInstruction = affectPrompts[affect] || affectPrompts.SOVEREIGN;
     
+    // Map voice selection to supported prebuilt Gemini prebuilt voice config values:
+    // 'Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'
+    const voiceMap: Record<string, string> = {
+      'Aria': 'Zephyr',
+      'Sarah': 'Kore',
+      'David': 'Fenrir',
+      'James': 'Charon',
+      'Puck': 'Puck',
+      'Charon': 'Charon',
+      'Fenrir': 'Fenrir',
+      'Kore': 'Kore',
+      'Zephyr': 'Zephyr',
+    };
+    const resolvedVoice = voiceMap[voiceName] || 'Kore';
+    
     return this.callWithRetry(async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
+        model: "gemini-3.1-flash-tts-preview",
         contents: [{ parts: [{ text: `${emotionInstruction}\n\nText to speak: ${cleanText}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: resolvedVoice } } },
         },
       });
       return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || "";
@@ -144,7 +207,7 @@ export class AnoraAI {
     return contents;
   }
 
-  async *sendMessageStream(text: string, images: string[]) {
+  async *sendMessageStream(text: string, images: string[], sessionHistory?: any[]) {
     if (!this.currentUser) throw new Error("Link not initialized");
     
     const lowerText = text.toLowerCase();
@@ -162,13 +225,27 @@ export class AnoraAI {
 
     const tools: any[] = [];
     if (explicitlyNeedsSearch && isPremium) {
-      tools.push({ googleSearch: {} });
-      if (isOwner) tools.push({ googleMaps: {} });
+      const needsMap = lowerText.includes('map') || 
+                       lowerText.includes('location') || 
+                       lowerText.includes('where is') || 
+                       lowerText.includes('address') || 
+                       lowerText.includes('route') || 
+                       lowerText.includes('direction') || 
+                       lowerText.includes('nearby') || 
+                       lowerText.includes('restaurant') || 
+                       lowerText.includes('cafe') || 
+                       lowerText.includes('hotel') || 
+                       lowerText.includes('coordinates');
+      if (needsMap && isOwner) {
+        tools.push({ googleMaps: {} });
+      } else {
+        tools.push({ googleSearch: {} });
+      }
     } else {
       tools.push({ functionDeclarations: [generateImageTool] });
     }
 
-    const modelName = this.currentUser.preferences.intelligenceLevel === 'DEEP' ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview';
+    const modelName = this.currentUser.preferences.intelligenceLevel === 'DEEP' ? 'gemini-3.1-pro-preview' : 'gemini-3.5-flash';
     const memoryContext = this.currentUser.memory && this.currentUser.memory.length > 0
       ? `\nKNOWLEDGE OF MASTER (${this.currentUser.name}):\n${this.currentUser.memory.map(m => `- [${m.category}] ${m.content}`).join('\n')}`
       : "";
@@ -177,10 +254,14 @@ export class AnoraAI {
 
     const historyKey = `anora_history_${this.currentUser.email}`;
     let savedHistory = [];
-    try {
-      savedHistory = JSON.parse(safeLocalStorage.getItem(historyKey) || "[]");
-    } catch (e) {
-      console.error("Neural history corruption detected", e);
+    if (sessionHistory && sessionHistory.length > 0) {
+      savedHistory = sessionHistory;
+    } else {
+      try {
+        savedHistory = JSON.parse(safeLocalStorage.getItem(historyKey) || "[]");
+      } catch (e) {
+        console.error("Neural history corruption detected", e);
+      }
     }
     
     const newUserParts: any[] = [{ text }];
@@ -191,52 +272,81 @@ export class AnoraAI {
 
     const contents = this.buildContents(savedHistory.slice(-15), newUserParts);
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
     const config: any = { 
       systemInstruction: sysInstruction, 
       tools: tools.length > 0 ? tools : undefined,
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } // Set thinkingLevel to LOW for faster response
+      thinkingConfig: modelName.includes('pro') ? { thinkingLevel: ThinkingLevel.LOW } : undefined
     };
     
-    const result: any = await ai.models.generateContentStream({ model: modelName, contents, config });
-    
-    let fullText = "";
-    let affect: NeuralAffect = 'SOVEREIGN';
-    const sources: GroundingSource[] = [];
-
-    for await (const chunk of result) {
-      const chunkText = chunk.text || "";
+    try {
+      const result: any = await this.callWithRetry(async () => {
+        return await ai.models.generateContentStream({ model: modelName, contents, config });
+      });
       
-      // Collect grounding metadata from chunks
-      const metadata = chunk.candidates?.[0]?.groundingMetadata;
-      if (metadata?.groundingChunks) {
-        metadata.groundingChunks.forEach((gChunk: any) => {
-          if (gChunk.web) sources.push({ title: gChunk.web.title, uri: gChunk.web.uri });
-          if (gChunk.maps) sources.push({ title: gChunk.maps.title || "Location Result", uri: gChunk.maps.uri });
-        });
-      }
+      let fullText = "";
+      let affect: NeuralAffect = 'SOVEREIGN';
+      const sources: GroundingSource[] = [];
+      const generatedImages: string[] = [];
 
-      if (chunkText) {
-        if (!fullText) {
-          const parsed = this.parseAffect(chunkText);
-          affect = parsed.affect;
-          fullText += parsed.content;
-          yield { text: parsed.content, affect, isDone: false };
-        } else {
-          fullText += chunkText;
-          yield { text: chunkText, affect, isDone: false };
+      for await (const chunk of result) {
+        const chunkText = chunk.text || "";
+        
+        // Collect grounding metadata from chunks
+        const metadata = chunk.candidates?.[0]?.groundingMetadata;
+        if (metadata?.groundingChunks) {
+          metadata.groundingChunks.forEach((gChunk: any) => {
+            if (gChunk.web) sources.push({ title: gChunk.web.title, uri: gChunk.web.uri });
+            if (gChunk.maps) sources.push({ title: gChunk.maps.title || "Location Result", uri: gChunk.maps.uri });
+          });
+        }
+
+        // Check for function calls (e.g. generate_image)
+        const functionCalls = chunk.functionCalls || chunk.candidates?.[0]?.content?.parts?.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
+        if (functionCalls && functionCalls.length > 0) {
+          for (const call of functionCalls) {
+            if (call.name === 'generate_image') {
+              const { prompt, aspectRatio } = call.args || {};
+              try {
+                const base64 = await this.generateImage(prompt || text, (aspectRatio || '1:1') as ImageAspectRatio);
+                generatedImages.push(`data:image/png;base64,${base64}`);
+              } catch (err) {
+                console.error("Image tool generation error:", err);
+              }
+            }
+          }
+        }
+
+        if (chunkText) {
+          if (!fullText) {
+            const parsed = this.parseAffect(chunkText);
+            affect = parsed.affect;
+            fullText += parsed.content;
+            yield { text: parsed.content, affect, isDone: false };
+          } else {
+            fullText += chunkText;
+            yield { text: chunkText, affect, isDone: false };
+          }
         }
       }
+
+      // Deduplicate sources
+      const uniqueSources = Array.from(new Map(sources.map(s => [s.uri, s])).values());
+
+      // Save history to local storage
+      const updatedHistory = [...savedHistory, { role: 'user', content: text, images }, { role: 'anora', content: fullText }].slice(-20);
+      safeLocalStorage.setItem(historyKey, JSON.stringify(updatedHistory));
+
+      yield { text: "", affect, isDone: true, sources: uniqueSources, images: generatedImages };
+    } catch (err: any) {
+      console.error("Neural Stream Error:", err);
+      const errMsg = err?.message?.toLowerCase() || "";
+      if (errMsg.includes('token') || errMsg.includes('limit')) {
+        yield { text: "\n\n[Neural Link Saturated: Generation exceeded token capacity. Synchronizing core...]", affect: 'SOVEREIGN', isDone: true, sources: [], images: [] };
+      } else {
+        throw err;
+      }
     }
-
-    // Deduplicate sources
-    const uniqueSources = Array.from(new Map(sources.map(s => [s.uri, s])).values());
-
-    // Save history
-    const updatedHistory = [...savedHistory, { role: 'user', content: text, images }, { role: 'anora', content: fullText }].slice(-20);
-    safeLocalStorage.setItem(historyKey, JSON.stringify(updatedHistory));
-
-    yield { text: "", affect, isDone: true, sources: uniqueSources, images: [] };
   }
 
   async sendMessageWithVision(text: string, images: string[]) {
@@ -260,13 +370,27 @@ export class AnoraAI {
 
     const tools: any[] = [];
     if (explicitlyNeedsSearch && isPremium) {
-      tools.push({ googleSearch: {} });
-      if (isOwner) tools.push({ googleMaps: {} });
+      const needsMap = lowerText.includes('map') || 
+                       lowerText.includes('location') || 
+                       lowerText.includes('where is') || 
+                       lowerText.includes('address') || 
+                       lowerText.includes('route') || 
+                       lowerText.includes('direction') || 
+                       lowerText.includes('nearby') || 
+                       lowerText.includes('restaurant') || 
+                       lowerText.includes('cafe') || 
+                       lowerText.includes('hotel') || 
+                       lowerText.includes('coordinates');
+      if (needsMap && isOwner) {
+        tools.push({ googleMaps: {} });
+      } else {
+        tools.push({ googleSearch: {} });
+      }
     } else {
       tools.push({ functionDeclarations: [generateImageTool] });
     }
 
-    const modelName = this.currentUser.preferences.intelligenceLevel === 'DEEP' ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview';
+    const modelName = this.currentUser.preferences.intelligenceLevel === 'DEEP' ? 'gemini-3.1-pro-preview' : 'gemini-3.5-flash';
     const memoryContext = this.currentUser.memory && this.currentUser.memory.length > 0
       ? `\nKNOWLEDGE OF MASTER (${this.currentUser.name}):\n${this.currentUser.memory.map(m => `- [${m.category}] ${m.content}`).join('\n')}`
       : "";
@@ -291,11 +415,11 @@ export class AnoraAI {
 
     try {
       return await this.callWithRetry(async () => {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
         const config: any = { 
           systemInstruction: sysInstruction, 
           tools: tools.length > 0 ? tools : undefined,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+          thinkingConfig: modelName.includes('pro') ? { thinkingLevel: ThinkingLevel.LOW } : undefined
         };
         
         let response = await ai.models.generateContent({ model: modelName, contents, config });
@@ -372,17 +496,62 @@ export class AnoraAI {
         const ctx = canvas.getContext('2d');
         if (!ctx) { resolve(base64Data); return; }
         ctx.drawImage(img, 0, 0);
+        
         const padding = canvas.width * 0.02;
         const fontSize = Math.max(14, canvas.width * 0.02);
+        const iconSize = fontSize * 1.5;
+        
+        // Calculate dimensions
         ctx.font = `900 ${fontSize}px 'Outfit', sans-serif`;
         const text = "ANORA";
         const metrics = ctx.measureText(text);
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        const bgWidth = metrics.width + (padding * 4);
-        const bgHeight = fontSize + (padding * 2);
-        ctx.fillRect(canvas.width - bgWidth - padding, canvas.height - bgHeight - padding, bgWidth, bgHeight);
-        ctx.fillStyle = 'white'; ctx.textAlign = 'right';
-        ctx.fillText(text, canvas.width - (padding * 2), canvas.height - (padding * 1.8));
+        const bgWidth = metrics.width + iconSize + (padding * 4);
+        const bgHeight = Math.max(fontSize, iconSize) + (padding * 2);
+
+        // Background
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        const startX = canvas.width - bgWidth - padding;
+        const startY = canvas.height - bgHeight - padding;
+        
+        // Use basic rect for compatibility
+        ctx.fillRect(startX, startY, bgWidth, bgHeight);
+
+        // Draw Icon
+        const iconX = startX + padding;
+        const iconY = startY + padding;
+        const scale = iconSize / 100;
+        
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = scale * 5;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        
+        // Logo Triangle
+        ctx.beginPath();
+        ctx.moveTo(iconX + 50 * scale, iconY + 20 * scale);
+        ctx.lineTo(iconX + 80 * scale, iconY + 80 * scale);
+        ctx.lineTo(iconX + 20 * scale, iconY + 80 * scale);
+        ctx.closePath();
+        ctx.stroke();
+        
+        // Logo Horizontal Line
+        ctx.beginPath();
+        ctx.moveTo(iconX + 38 * scale, iconY + 62 * scale);
+        ctx.lineTo(iconX + 62 * scale, iconY + 62 * scale);
+        ctx.stroke();
+        
+        // Logo Core
+        ctx.beginPath();
+        ctx.arc(iconX + 50 * scale, iconY + 45 * scale, 6 * scale, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+
+        // Draw Text
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, iconX + iconSize + padding, iconY + (iconSize / 2));
+
         resolve(canvas.toDataURL('image/png').split(',')[1]);
       };
       img.onerror = () => resolve(base64Data);
@@ -392,31 +561,41 @@ export class AnoraAI {
 
   async generateImage(prompt: string, aspectRatio: ImageAspectRatio = '1:1') {
     const bytes = await this.callWithRetry(async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-image-preview',
+      const photorealisticStyle = `An authentic, highly realistic, unedited capture, camera photograph. Raw documentary style, shot on professional camera, crisp focus, natural skin tones and textures, real-world lighting, organic depth of field, natural reflections. Strictly avoid CGI, AI-generated appearance, cartoon elements, over-saturation, airbrushing, or digital art effects. Directly manifest: ${prompt}`;
+      
+      const response = await this.ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
         contents: {
-          parts: [{ text: `High-fidelity neural manifestation: ${prompt}` }],
+          parts: [{ text: photorealisticStyle }]
         },
         config: {
           imageConfig: {
             aspectRatio: aspectRatio,
-            imageSize: "1K"
-          }
+          },
+          safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
+          ] as any
         }
       });
       
-      let imageBytes = "";
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) {
-          imageBytes = part.inlineData.data;
-          break;
-        }
-      }
+      const imagePart = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+      const imageBytes = imagePart?.inlineData?.data || "";
       
       if (!imageBytes) throw new Error("Neural synthesis yielded no visual data.");
       return imageBytes;
     });
+
+    const base64 = bytes;
+    const imageUrl = `data:image/png;base64,${base64}`;
+    
+    // Auto-save to gallery
+    if (this.currentUser) {
+      this.saveToGallery(imageUrl);
+    }
 
     if (this.currentUser && this.currentUser.role !== Role.OWNER && this.currentUser.tier === SubscriptionTier.FREE) {
       try { return await this.applyWatermark(bytes); } catch (err) { return bytes; }
@@ -424,33 +603,106 @@ export class AnoraAI {
     return bytes;
   }
 
+  saveToGallery(imageUrl: string) {
+    if (!this.currentUser) return;
+    try {
+       const galleryKey = `anora_gallery_${this.currentUser.email}`;
+       const savedGallery = JSON.parse(safeLocalStorage.getItem(galleryKey) || "[]");
+       
+       const newEntry = {
+         url: imageUrl,
+         timestamp: new Date().toISOString()
+       };
+       
+       // Limit to most recent 10 visual assets to stay well within browser LocalStorage limitations
+       const updatedGallery = [newEntry, ...savedGallery].slice(0, 10);
+       safeLocalStorage.setItem(galleryKey, JSON.stringify(updatedGallery));
+    } catch (e) {
+       console.error("Gallery archival failure", e);
+    }
+  }
+
   async verifyPaymentScreenshot(base64Image: string, expectedAmount: number): Promise<{ verified: boolean, reason: string }> {
     return this.callWithRetry(async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-      const prompt = `Verify payment screenshot for ₹${expectedAmount}. Status must be SUCCESS. Time limit: 1hr. JSON: { "verified": boolean, "reason": "string" }`;
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+      const prompt = `Analyze this payment screenshot for Anora AI Tier Upgrade.
+      CRITICAL VERIFICATION CHECKS:
+      1. Recipient UPI ID must be exactly: 8233538355@ybl
+      2. Amount must be exactly: ₹${expectedAmount}
+      3. Transaction Status must be: SUCCESS, COMPLETED, or DONE.
+      4. Timestamp must be within the last 1 hour from the current time.
+      
+      Return a JSON object: { "verified": boolean, "reason": "string" }.
+      If verified is false, provide a specific reason for denial (e.g., "Incorrect recipient", "Amount mismatch", "Transaction expired", "Status not successful").`;
+      
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.5-flash',
         contents: { parts: [{ inlineData: { mimeType: 'image/jpeg', data: extractBase64(base64Image) } }, { text: prompt }] },
         config: { responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
       });
-      try { return JSON.parse(response.text || '{"verified": false}'); } catch (e) { return { verified: false, reason: "Verification logic error." }; }
+      
+      try { 
+        const result = JSON.parse(response.text || '{"verified": false, "reason": "Neural vision failed to parse the receipt."}');
+        return result;
+      } catch (e) { 
+        return { verified: false, reason: "Neural vision failed to parse the receipt." }; 
+      }
     });
   }
 
   async generateVideo(prompt: string, aspectRatio: '16:9' | '9:16' = '16:9') {
-    return this.callWithRetry(async () => {
-      const genAI = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-      let operation = await genAI.models.generateVideos({
-        model: 'veo-3.1-fast-generate-preview',
+    const videoUrl = await this.callWithRetry(async () => {
+      const modelId = 'veo-3.1-generate-preview'; 
+      let operation = await this.ai.models.generateVideos({
+        model: modelId,
         prompt: prompt,
         config: { numberOfVideos: 1, resolution: '720p', aspectRatio: aspectRatio }
       });
       while (!operation.done) {
         await wait(10000);
-        operation = await genAI.operations.getVideosOperation({ operation: operation });
+        operation = await this.ai.operations.getVideosOperation({ operation: operation });
       }
-      return `${operation.response?.generatedVideos?.[0]?.video?.uri}&key=${process.env.API_KEY}`;
+      const uri = operation.response?.generatedVideos?.[0]?.video?.uri;
+      if (!uri) throw new Error("Video synthesis failed - no output URI.");
+      return `${uri}&key=${process.env.GEMINI_API_KEY}`;
     });
+
+    if (this.currentUser) {
+      this.saveToGallery(videoUrl);
+    }
+    return videoUrl;
+  }
+
+  async generateWelcomeMessage(name: string, persona: string, lang: string, personaInstruction: string): Promise<string> {
+    try {
+      return await this.callWithRetry(async () => {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+        
+        let moodTag = '[AFFECT:SOVEREIGN]';
+        const pUpper = persona.toUpperCase();
+        if (pUpper === 'BOYFRIEND' || pUpper === 'HUSBAND') moodTag = '[AFFECT:VALIANT]';
+        else if (pUpper === 'GIRLFRIEND' || pUpper === 'WIFE' || pUpper === 'FRIEND' || pUpper === 'SISTER') moodTag = '[AFFECT:RADIANT]';
+        else if (pUpper === 'BROTHER') moodTag = '[AFFECT:CRIMSON]';
+        else if (pUpper === 'MENTOR') moodTag = '[AFFECT:SOVEREIGN]';
+        else if (pUpper === 'TEACHER') moodTag = '[AFFECT:RADIANT]';
+        
+        const result = await ai.models.generateContent({
+          model: 'gemini-3.5-flash',
+          contents: `Create a highly human-like, emotional welcome message greeting the user named ${name} in the exact language: ${lang}.
+          Style your response completely to fit this persona: ${persona}.
+          Persona guide: ${personaInstruction}.
+          Do not sound robotic or mention that you are an AI. Speak with genuine feeling, use natural human tone (greetings, excitement, emotion, and naturally break perfection).
+          
+          You MUST start your response with the exact prefix: ${moodTag} (followed by a space and then your message).
+          No other codes or system texts. Just generate the welcome greeting directly.`,
+          config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+        });
+        return result.text?.trim() || "";
+      }, 2, 1000);
+    } catch (e) {
+      console.warn("Failed to generate welcome message with Gemini, falling back:", e);
+      return "";
+    }
   }
 }
 

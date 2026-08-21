@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Persona, AppTheme } from '../types';
+import { User, Persona, AppTheme, ColorMode } from '../types';
 import { AnoraLogo } from './AnoraLogo';
 import { Sparkles, Zap, Shield, Eye, Palette, ChevronRight, Check } from 'lucide-react';
 
@@ -41,7 +41,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ user, onComple
   const [step, setStep] = useState(0);
   const [persona, setPersona] = useState<Persona>(user.preferences.persona || 'DEFAULT');
   const [theme, setTheme] = useState<AppTheme>(user.preferences.theme || 'OBSIDIAN');
-  const [colorMode, setColorMode] = useState<'WHITE' | 'DARK'>(user.preferences.colorMode || 'WHITE');
+  const [colorMode, setColorMode] = useState<ColorMode>(user.preferences.colorMode || 'WHITE');
 
   const handleNext = () => {
     if (step < STEPS.length - 1) {

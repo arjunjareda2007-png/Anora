@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Role, SubscriptionTier, ImageAspectRatio, GroundingSource } from '../types';
 import { AssistantFeatures } from './AssistantFeatures';
-import { NeuralArtisan } from './NeuralArtisan';
 import { NeuralSearch } from './NeuralSearch';
 import { NeuralAudio } from './NeuralAudio';
 import { NeuralGallery } from './NeuralGallery';
@@ -66,7 +65,7 @@ export const NeuralFeatures: React.FC<NeuralFeaturesProps> = ({
           </div>
           <div className="flex items-center gap-4">
             <nav className="hidden md:flex items-center gap-2 bg-zinc-50 dark:bg-white/5 p-1.5 rounded-2xl border border-zinc-100 dark:border-white/10">
-              {['HUB', 'IMAGES', 'SEARCH', 'AUDIO', 'GALLERY', 'SYSTEM'].map(f => (
+              {['HUB', 'SEARCH', 'AUDIO', 'GALLERY', 'SYSTEM'].map(f => (
                 <button 
                   key={f}
                   onClick={() => {
@@ -98,10 +97,6 @@ export const NeuralFeatures: React.FC<NeuralFeaturesProps> = ({
               onClose={() => {}} 
               isSection={true}
             />
-          </FeatureSection>
-
-          <FeatureSection id="IMAGES" title="Neural Artisan">
-            <NeuralArtisan user={user} isOpen={true} onClose={() => {}} isSection={true} />
           </FeatureSection>
 
           <FeatureSection id="SEARCH" title="Neural Search">
