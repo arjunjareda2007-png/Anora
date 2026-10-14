@@ -55,10 +55,10 @@ export const NeuralWorkspace: React.FC<NeuralWorkspaceProps> = ({ user, onUpdate
       case 'VAULT':
         return (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {(user.vault || []).filter(v => v.title.toLowerCase().includes(searchQuery.toLowerCase())).map(item => (
+            {(user.vault || []).filter(v => v.title.toLowerCase().includes(searchQuery.toLowerCase())).map((item, itemIdx) => (
               <motion.div 
                 layout
-                key={item.id} 
+                key={item.id ? `${item.id}-${itemIdx}` : `vault-${itemIdx}`} 
                 className="p-6 bg-zinc-50 border border-zinc-100 rounded-[2rem] group hover:border-zinc-300 transition-all"
               >
                 <div className="flex justify-between items-start mb-4">
@@ -87,10 +87,10 @@ export const NeuralWorkspace: React.FC<NeuralWorkspaceProps> = ({ user, onUpdate
       case 'MEMORY':
         return (
           <div className="space-y-4">
-            {user.memory.filter(m => m.content.toLowerCase().includes(searchQuery.toLowerCase())).map(mem => (
+            {user.memory.filter(m => m.content.toLowerCase().includes(searchQuery.toLowerCase())).map((mem, memIdx) => (
               <motion.div 
                 layout
-                key={mem.id} 
+                key={mem.id ? `${mem.id}-${memIdx}` : `mem-${memIdx}`} 
                 className="p-6 bg-zinc-50 border border-zinc-100 rounded-[2.5rem] flex items-center gap-6 group hover:border-zinc-300 transition-all"
               >
                 <div className="w-12 h-12 rounded-2xl bg-white border border-zinc-100 flex items-center justify-center shadow-sm">
@@ -101,7 +101,7 @@ export const NeuralWorkspace: React.FC<NeuralWorkspaceProps> = ({ user, onUpdate
                     <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest">{mem.category}</span>
                     <div className="flex gap-0.5">
                       {[...Array(5)].map((_, i) => (
-                        <div key={i} className={`w-1 h-1 rounded-full ${i < mem.strength ? 'bg-zinc-900' : 'bg-zinc-200'}`} />
+                        <div key={`${mem.id || memIdx}-dot-${i}`} className={`w-1 h-1 rounded-full ${i < mem.strength ? 'bg-zinc-900' : 'bg-zinc-200'}`} />
                       ))}
                     </div>
                   </div>
@@ -117,8 +117,8 @@ export const NeuralWorkspace: React.FC<NeuralWorkspaceProps> = ({ user, onUpdate
       case 'LOGS':
         return (
           <div className="space-y-4">
-            {(user.siteLogs || []).map(log => (
-              <div key={log.id} className="p-6 bg-zinc-50 border border-zinc-100 rounded-[2.5rem] flex flex-col sm:flex-row sm:items-center gap-6">
+            {(user.siteLogs || []).map((log, logIdx) => (
+              <div key={log.id ? `${log.id}-${logIdx}` : `log-${logIdx}`} className="p-6 bg-zinc-50 border border-zinc-100 rounded-[2.5rem] flex flex-col sm:flex-row sm:items-center gap-6">
                 <div className="flex-1">
                    <div className="flex items-center gap-3 mb-2">
                       <span className={`px-3 py-1 rounded-full text-[7px] font-black uppercase tracking-widest ${log.status === 'CRITICAL' ? 'bg-red-500 text-white' : log.status === 'COMPLETED' ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-400 border border-zinc-100'}`}>{log.status}</span>
@@ -207,7 +207,7 @@ export const NeuralWorkspace: React.FC<NeuralWorkspaceProps> = ({ user, onUpdate
               <div className="flex flex-col">
                  <span className="text-[7px] font-black text-zinc-300 uppercase tracking-widest">Neural Load</span>
                  <div className="flex gap-1 mt-1">
-                    {[...Array(8)].map((_, i) => <div key={i} className={`w-3 h-1 rounded-full ${i < 3 ? 'bg-zinc-900' : 'bg-zinc-100'}`} />)}
+                    {[...Array(8)].map((_, i) => <div key={`load-bar-${i}`} className={`w-3 h-1 rounded-full ${i < 3 ? 'bg-zinc-900' : 'bg-zinc-100'}`} />)}
                  </div>
               </div>
            </div>

@@ -4,7 +4,7 @@ import { User, Role, SubscriptionTier, AiMood, IntelligenceLevel, Persona, AppTh
 import { ACCENT_COLORS, PREBUILT_VOICES, PERSONA_INSTRUCTIONS, THEMES, LANGUAGES, OWNER_EMAIL } from '../constants';
 import { anoraService } from '../services/geminiService';
 import { safeLocalStorage, pruneUser, cleanFirestoreData } from '../src/utils/storage';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, setDoc, onSnapshot, collection } from 'firebase/firestore';
 import Cropper from 'react-easy-crop';
 import { Camera, Crop as CropIcon, Check, X as CloseIcon, CheckCircle2 } from 'lucide-react';
@@ -256,7 +256,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, isOpen, initia
 
     onUpdate(updatedUser);
     
-    if (auth.currentUser) {
+    if (user?.id) {
       try {
         // Use pruneUser to ensure personaAvatars are within safety bounds before Firestore sync
         const prunedUser = pruneUser(updatedUser);
@@ -319,7 +319,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, isOpen, initia
       setEditingUser(null);
       
       // Sync to Firestore if it's an admin/owner updating another user
-      if (auth.currentUser) {
+      if (updatedUser?.id) {
         try {
           const cleanedUpdated = cleanFirestoreData(prunedUpdated);
           await setDoc(doc(db, 'users', updatedUser.id), cleanedUpdated);
@@ -476,26 +476,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, isOpen, initia
                       <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-transparent border-b border-zinc-100 dark:border-white/10 py-2 text-zinc-900 dark:text-white font-bold text-sm outline-none focus:border-zinc-900 dark:focus:border-white transition-all" />
                    </div>
                    <div className="space-y-1.5 relative">
-                      <label className="text-[8px] font-black text-zinc-400 uppercase tracking-widest ml-1">Access Key</label>
-                      <div className="relative">
-                        <input 
-                          type={showPassword ? "text" : "password"} 
-                          value={password} 
-                          onChange={e => setPassword(e.target.value)} 
-                          placeholder="Secure access key..." 
-                          className="w-full bg-transparent border-b border-zinc-100 dark:border-white/10 py-2 pr-10 text-zinc-900 dark:text-white font-bold text-sm outline-none focus:border-zinc-900 dark:focus:border-white transition-all" 
-                        />
-                        <button 
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors"
-                        >
-                          {showPassword ? (
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                          ) : (
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                          )}
-                        </button>
+                      <label className="text-[8px] font-black text-zinc-400 uppercase tracking-widest ml-1">Identity & Security</label>
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-100 dark:border-white/10">
+                        <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                          Secured via Clerk
+                        </span>
+                        <span className="text-[9px] font-mono text-zinc-400">Connected</span>
                       </div>
                    </div>
                  </div>
@@ -597,10 +584,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, isOpen, initia
                     </div>
                   </button>
 
-                  {expandedSection === 'VOICE' && (
+                   {expandedSection === 'VOICE' && (
                     <div className="space-y-1.5 max-h-[300px] overflow-y-auto no-scrollbar p-3 bg-zinc-50 dark:bg-white/5 rounded-2xl animate-in slide-in-from-top-4 duration-300 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {PREBUILT_VOICES.map((v, i) => (
-                        <button key={i} onClick={() => { setVoiceName(v.name); setExpandedSection(null); }} className={`p-4 rounded-xl border text-left transition-all ${voiceName === v.name ? 'bg-zinc-900 dark:bg-white text-white dark:text-black shadow-lg scale-[1.02]' : 'bg-white dark:bg-white/10 border-zinc-100 dark:border-white/10 text-zinc-400'}`}>
+                        <button key={`voice-${v.name}-${i}`} onClick={() => { setVoiceName(v.name); setExpandedSection(null); }} className={`p-4 rounded-xl border text-left transition-all ${voiceName === v.name ? 'bg-zinc-900 dark:bg-white text-white dark:text-black shadow-lg scale-[1.02]' : 'bg-white dark:bg-white/10 border-zinc-100 dark:border-white/10 text-zinc-400'}`}>
                            <div className="flex justify-between items-center">
                               <span className="text-[8px] font-black uppercase tracking-widest">{(v as any).alias || v.name}</span>
                               <span className="text-[6px] font-bold opacity-30">{v.gender}</span>
@@ -683,8 +670,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, isOpen, initia
                     <h4 className="text-[10px] font-black uppercase tracking-widest mb-1">{plan.tier}</h4>
                     <p className="text-xl font-black mb-4">{plan.price}</p>
                     <ul className="space-y-2 mb-6 flex-1">
-                      {plan.features.map(f => (
-                        <li key={f} className="text-[8px] font-bold uppercase tracking-tight flex items-center gap-2">
+                      {plan.features.map((f, fIdx) => (
+                        <li key={`${plan.tier}-feat-${fIdx}`} className="text-[8px] font-bold uppercase tracking-tight flex items-center gap-2">
                           <div className={`w-1 h-1 rounded-full ${user.tier === plan.tier ? (user.preferences.colorMode === 'DARK' ? 'bg-black' : 'bg-white') : 'bg-zinc-300'}`}></div>
                           {f}
                         </li>
@@ -800,7 +787,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, isOpen, initia
                   <h4 className="text-[10px] font-black text-zinc-900 dark:text-white uppercase tracking-widest ml-2">Frequently Asked Questions</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {FAQ_ITEMS.map((item, i) => (
-                      <div key={i} className="p-5 bg-white dark:bg-zinc-800/50 border border-zinc-100 dark:border-white/5 rounded-2xl shadow-sm">
+                      <div key={`faq-item-${i}`} className="p-5 bg-white dark:bg-zinc-800/50 border border-zinc-100 dark:border-white/5 rounded-2xl shadow-sm">
                         <h5 className="text-[9px] font-black text-zinc-900 dark:text-white uppercase tracking-tight mb-2">{item.q}</h5>
                         <p className="text-[9px] text-zinc-500 dark:text-zinc-400 leading-relaxed">{item.a}</p>
                       </div>
@@ -891,8 +878,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, isOpen, initia
                             <input type="tel" value={editingUser.phoneNumber || ''} onChange={e => setEditingUser({...editingUser, phoneNumber: e.target.value})} className="w-full bg-white dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded-xl px-4 py-3 text-xs outline-none" />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-[8px] font-black text-zinc-400 uppercase tracking-widest ml-1">Password</label>
-                            <input type="text" value={editingUser.password} onChange={e => setEditingUser({...editingUser, password: e.target.value})} className="w-full bg-white dark:bg-black/40 border border-zinc-200 dark:border-white/10 rounded-xl px-4 py-3 text-xs outline-none" />
+                            <label className="text-[8px] font-black text-zinc-400 uppercase tracking-widest ml-1">Clerk User ID</label>
+                            <input type="text" readOnly value={editingUser.id} className="w-full bg-zinc-100 dark:bg-black/60 border border-zinc-200 dark:border-white/10 rounded-xl px-4 py-3 text-xs outline-none font-mono text-zinc-500" />
                           </div>
                           <div className="space-y-2">
                             <label className="text-[8px] font-black text-zinc-400 uppercase tracking-widest ml-1">Tier</label>
@@ -953,8 +940,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, isOpen, initia
                       </div>
                     ) : (
                       <div className="space-y-2 max-h-[400px] overflow-y-auto no-scrollbar pr-2">
-                        {allUsers.map(u => (
-                          <div key={u.id} className="flex items-center justify-between p-4 bg-white dark:bg-black/40 border border-zinc-100 dark:border-white/10 rounded-2xl hover:border-amber-500/30 transition-all">
+                        {allUsers.map((u, uIdx) => (
+                          <div key={u.id ? `${u.id}-${uIdx}` : `user-${uIdx}`} className="flex items-center justify-between p-4 bg-white dark:bg-black/40 border border-zinc-100 dark:border-white/10 rounded-2xl hover:border-amber-500/30 transition-all">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-white/5 flex items-center justify-center text-xs font-black overflow-hidden">
                                 {u.avatar ? <img src={u.avatar} className="w-full h-full object-cover" /> : u.name.charAt(0)}

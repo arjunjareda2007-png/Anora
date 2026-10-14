@@ -493,8 +493,8 @@ With a strong interest in Artificial Intelligence, YouTube SEO, and content stra
                   <p className="text-[8px] text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest mt-1">Stored knowledge and personal patterns</p>
                </div>
                <div className="grid gap-4">
-                  {(user.memory || []).length > 0 ? (user.memory || []).map(m => (
-                    <div key={m.id} className="p-6 bg-white dark:bg-white/5 border border-zinc-100 dark:border-white/10 rounded-[2rem] shadow-sm space-y-4 group">
+                  {(user.memory || []).length > 0 ? (user.memory || []).map((m, mIdx) => (
+                    <div key={m.id ? `${m.id}-${mIdx}` : `mem-${mIdx}`} className="p-6 bg-white dark:bg-white/5 border border-zinc-100 dark:border-white/10 rounded-[2rem] shadow-sm space-y-4 group">
                        <div className="flex justify-between items-start">
                           <div className="flex gap-2">
                             {(['PERSONAL', 'WORK', 'CREATIVE', 'FACT'] as const).map(cat => (
@@ -552,8 +552,8 @@ With a strong interest in Artificial Intelligence, YouTube SEO, and content stra
                           { tier: SubscriptionTier.PRO, price: 499, label: 'Neural Pro Monthly', desc: 'Advanced reasoning & grounding' },
                           { tier: SubscriptionTier.LIFETIME, price: 9999, label: 'Neural Sovereign Lifetime', desc: 'Infinite compute & priority access' },
                           { tier: SubscriptionTier.OWNER, price: 300000, label: 'Sovereign Owner', desc: 'Direct neural link to core' }
-                        ].map((plan) => (
-                          <div key={plan.tier} className="space-y-2">
+                        ].map((plan, planIdx) => (
+                          <div key={`${plan.tier}-${planIdx}`} className="space-y-2">
                              <button 
                               onClick={() => setShowPlanDetails(showPlanDetails === plan.tier ? null : plan.tier)}
                               className={`w-full group p-6 bg-white dark:bg-zinc-800 border rounded-[2.5rem] transition-all flex items-center justify-between active:scale-95 shadow-sm ${showPlanDetails === plan.tier ? 'border-zinc-900 dark:border-white ring-1 ring-zinc-900 dark:ring-white' : 'border-zinc-100 dark:border-white/10 hover:border-zinc-300 dark:hover:border-white/30'}`}
@@ -569,7 +569,7 @@ With a strong interest in Artificial Intelligence, YouTube SEO, and content stra
                               <div className="p-6 bg-zinc-50 dark:bg-white/5 rounded-[2rem] border border-zinc-100 dark:border-white/10 animate-in slide-in-from-top-4 duration-300 space-y-4">
                                 <ul className="space-y-2">
                                   {(PLAN_FEATURES[plan.tier as keyof typeof PLAN_FEATURES] || PLAN_FEATURES.PRO).map((f, i) => (
-                                    <li key={i} className="flex items-center gap-2 text-[9px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest">
+                                    <li key={`${plan.tier}-feat-${i}`} className="flex items-center gap-2 text-[9px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-widest">
                                       <div className={`w-1.5 h-1.5 rounded-full ${plan.tier === SubscriptionTier.OWNER ? 'bg-amber-500' : 'bg-zinc-900 dark:bg-white'}`}></div>
                                       {f}
                                     </li>
@@ -805,7 +805,7 @@ With a strong interest in Artificial Intelligence, YouTube SEO, and content stra
                 <div className="flex flex-wrap gap-3 relative z-10">
                   {Object.entries(aboutContent.links).map(([key, url]) => (
                     <a 
-                      key={key} 
+                      key={`link-${key}`} 
                       href={url as string} 
                       target="_blank" 
                       rel="noopener noreferrer"
@@ -1356,7 +1356,7 @@ With a strong interest in Artificial Intelligence, YouTube SEO, and content stra
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {Object.entries(aboutContent.links).map(([key, url]) => (
                     <a 
-                      key={key} 
+                      key={`architect-link-${key}`} 
                       href={url} 
                       target="_blank" 
                       rel="noopener noreferrer"

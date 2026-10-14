@@ -126,7 +126,7 @@ const GroundingSources: React.FC<{ sources: GroundingSource[] }> = ({ sources })
       <div className="flex flex-wrap gap-2">
         {uniqueSources.map((source, i) => (
           <a 
-            key={i} 
+            key={`${source.uri || 'source'}-${i}`} 
             href={source.uri} 
             target="_blank" 
             rel="noopener noreferrer"
@@ -182,7 +182,13 @@ export const MessageList: React.FC<MessageListProps> = ({
   const isPremium = userTier === SubscriptionTier.PRO || userTier === SubscriptionTier.LIFETIME || isOwnerView;
 
   const uniqueMessages = useMemo(() => {
-    return messages.filter((msg, idx, self) => self.findIndex(t => t.id === msg.id) === idx);
+    const seen = new Set<string>();
+    return messages.filter((msg, idx) => {
+      const id = msg.id || `msg-${idx}-${msg.timestamp ? new Date(msg.timestamp).getTime() : idx}`;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
   }, [messages]);
 
   return (
@@ -194,6 +200,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         const isSpeaking = speakingId === msg.id;
         const isEditing = editingId === msg.id;
         const isMenuOpen = contextMenuId === msg.id;
+        const msgKey = msg.id ? `${msg.id}` : `msg-${index}`;
         
         // Literal interpretation: "If anora is responding (streaming) then just show three dots"
         // We'll hide the content of Anora's last message if we're currently streaming it.
@@ -211,7 +218,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           : "animate-in fade-in slide-in-from-bottom-1 duration-200";
 
         return (
-          <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${animationClass} relative`} style={{ animationDelay: `${isAnora ? 20 : index * 10}ms` }}>
+          <div key={msgKey} className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${animationClass} relative`} style={{ animationDelay: `${isAnora ? 20 : index * 10}ms` }}>
             <div className={`max-w-[92%] sm:max-w-[85%] group relative ${isMenuOpen ? 'z-[150] scale-[1.01]' : 'z-10'} transition-all duration-300`}>
               <div className={`flex items-center gap-3 mb-1 px-2 transition-all opacity-50 group-hover:opacity-100 ${isUser ? 'flex-row-reverse' : ''}`}>
                 <div className="flex items-center gap-2">
@@ -234,7 +241,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               {msg.images && msg.images.length > 0 && !isEditing && (
                 <div className={`grid gap-2 mb-3 animate-in zoom-in-95 duration-500 ${msg.images.length === 4 ? 'grid-cols-2' : 'flex flex-wrap'} ${isUser ? 'justify-end' : 'justify-start'}`}>
                   {msg.images.map((img, i) => (
-                    <div key={i} className={`relative group/img overflow-hidden rounded-[1.8rem] sm:rounded-[2.5rem] border shadow-md transition-all hover:border-zinc-400 ${isOwnerView ? 'border-amber-500/20' : 'border-zinc-200 dark:border-white/10'} ${msg.images && msg.images.length === 1 ? 'w-64 h-64 sm:w-80 sm:h-80' : 'w-full aspect-square'}`}>
+                    <div key={`${msgKey}-img-${i}`} className={`relative group/img overflow-hidden rounded-[1.8rem] sm:rounded-[2.5rem] border shadow-md transition-all hover:border-zinc-400 ${isOwnerView ? 'border-amber-500/20' : 'border-zinc-200 dark:border-white/10'} ${msg.images && msg.images.length === 1 ? 'w-64 h-64 sm:w-80 sm:h-80' : 'w-full aspect-square'}`}>
                       <img src={img} alt="V" className="w-full h-full object-cover transition-transform duration-[2s] group-hover/img:scale-110" />
                       
                       {/* Neural Watermark */}

@@ -45,8 +45,20 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests or WebSocket / Chrome Extension / HMR traffic
-  if (request.method !== 'GET' || url.protocol === 'chrome-extension:' || url.pathname.startsWith('/api/')) {
+  // Skip non-GET requests, Chrome extensions, API endpoints, dev server traffic and Vite modules
+  if (
+    request.method !== 'GET' || 
+    url.protocol === 'chrome-extension:' || 
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.endsWith('.tsx') ||
+    url.pathname.endsWith('.ts') ||
+    url.searchParams.has('v') ||
+    url.searchParams.has('t') ||
+    url.hostname === 'localhost' ||
+    url.hostname.includes('ais-dev-')
+  ) {
     return;
   }
 

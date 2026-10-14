@@ -57,7 +57,7 @@ export class AnoraAI {
     this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
   }
 
-  private async callWithRetry<T>(fn: () => Promise<T>, retries = 7, delay = 2500): Promise<T> {
+  private async callWithRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1500): Promise<T> {
     try {
       return await fn();
     } catch (err: any) {
@@ -72,13 +72,18 @@ export class AnoraAI {
                            status === 'resource_exhausted' ||
                            err?.status === 429;
 
+      // If hard limit 0 (e.g. quota limit 0 on specific models), retrying won't succeed
+      if (errMsg.includes('limit: 0') || errMsg.includes('limit of 0')) {
+        throw err;
+      }
+
       const isNetworkTransient = errMsg.includes('failed to fetch') ||
                                 errMsg.includes('network') ||
                                 errMsg.includes('timeout') ||
                                 errMsg.includes('connection');
       
       if ((isQuotaError || isNetworkTransient) && retries > 0) {
-        const jitter = Math.random() * 1500;
+        const jitter = Math.random() * 1000;
         console.warn(`[Anora Link] Transient anomaly. Retrying in ${Math.round(delay + jitter)}ms (${retries} retries left)...`);
         await wait(delay + jitter);
         return this.callWithRetry(fn, retries - 1, delay * 1.5);
@@ -97,14 +102,14 @@ export class AnoraAI {
       return await this.callWithRetry(async () => {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
         const result = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-3.8-flash',
           contents: `Analyze the following chat history and generate a very short, catchy, and professional title (max 3-4 words) for this conversation.
           Return ONLY the title, no quotes or extra text.
           History: ${messages.slice(0, 10).map(m => `[${m.role}] ${m.content}`).join(' | ')}`,
           config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
         });
         return result.text?.trim() || "";
-      }, 2, 2000);
+      }, 2, 1000);
     } catch (e) {
       return "";
     }
@@ -114,14 +119,14 @@ export class AnoraAI {
       if (messages.length < 4 || !this.currentUser) return [];
       try {
         return await this.callWithRetry(async () => {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
-        const result = await ai.models.generateContent({
-            model: 'gemini-3.5-flash',
-              contents: `Analyze history and extract long-term memories/preferences for user ${this.currentUser?.name}.
-              Focus on: Name, interests, mood patterns, important life events, and specific preferences mentioned.
-              Return JSON array: { 'content', 'category', 'strength' (1-5) }.
-              History: ${messages.slice(-15).map(m => `[${m.role}] ${m.content}`).join(' | ')}`,
-              config: { responseMimeType: 'application/json' }
+          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+          const result = await ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: `Analyze history and extract long-term memories/preferences for user ${this.currentUser?.name}.
+            Focus on: Name, interests, mood patterns, important life events, and specific preferences mentioned.
+            Return JSON array: { 'content', 'category', 'strength' (1-5) }.
+            History: ${messages.slice(-15).map(m => `[${m.role}] ${m.content}`).join(' | ')}`,
+            config: { responseMimeType: 'application/json' }
           });
           const memories = JSON.parse(result.text || "[]");
           return memories.map((m: any) => ({ 
@@ -131,7 +136,7 @@ export class AnoraAI {
             strength: m.strength || 3,
             timestamp: new Date().toISOString() 
           }));
-        }, 3, 5000);
+        }, 2, 2000);
       } catch (e) { 
         return []; 
       }
@@ -142,13 +147,13 @@ export class AnoraAI {
       return await this.callWithRetry(async () => {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
         const result = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-3.8-flash',
           contents: `Detect the user's mood from this message: "${text}".
           Return ONLY one word from this list: HAPPY, SAD, ANGRY, MOTIVATED, STRESSED, CALM, CURIOUS.`,
           config: { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
         });
         return result.text?.trim().toUpperCase() || 'CALM';
-      }, 2, 2000);
+      }, 2, 1000);
     } catch (e) {
       return 'CALM';
     }
@@ -156,6 +161,7 @@ export class AnoraAI {
 
   async speak(text: string, voiceName: string = 'Kore', affect: NeuralAffect = 'SOVEREIGN'): Promise<string> {
     const cleanText = sanitizeForTTS(text);
+    if (!cleanText) return "";
     const emotionInstruction = affectPrompts[affect] || affectPrompts.SOVEREIGN;
     
     // Map voice selection to supported prebuilt Gemini prebuilt voice config values:
@@ -173,18 +179,37 @@ export class AnoraAI {
     };
     const resolvedVoice = voiceMap[voiceName] || 'Kore';
     
-    return this.callWithRetry(async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-tts-preview",
-        contents: [{ parts: [{ text: `${emotionInstruction}\n\nText to speak: ${cleanText}` }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: resolvedVoice } } },
-        },
-      });
-      return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || "";
-    });
+    try {
+      return await this.callWithRetry(async () => {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+        const response = await ai.models.generateContent({
+          model: "gemini-3.8-flash-tts",
+          contents: [{ parts: [{ text: `${emotionInstruction}\n\nText to speak: ${cleanText}` }] }],
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: resolvedVoice } } },
+          },
+        });
+        return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || "";
+      }, 2, 1000);
+    } catch (ttsErr) {
+      console.warn("[Anora TTS] Primary TTS voice generation failed, trying lite TTS:", ttsErr);
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+        const response = await ai.models.generateContent({
+          model: "gemini-3.8-flash-lite-tts",
+          contents: [{ parts: [{ text: cleanText }] }],
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: resolvedVoice } } },
+          },
+        });
+        return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || "";
+      } catch (liteErr) {
+        console.warn("[Anora TTS] Vocal synthesis unavailable for this utterance:", liteErr);
+        return "";
+      }
+    }
   }
 
   parseAffect(text: string): { content: string, affect: NeuralAffect } {
@@ -245,7 +270,7 @@ export class AnoraAI {
       tools.push({ functionDeclarations: [generateImageTool] });
     }
 
-    const modelName = this.currentUser.preferences.intelligenceLevel === 'DEEP' ? 'gemini-3.1-pro-preview' : 'gemini-3.5-flash';
+    const modelName = 'gemini-3.8-flash';
     const memoryContext = this.currentUser.memory && this.currentUser.memory.length > 0
       ? `\nKNOWLEDGE OF MASTER (${this.currentUser.name}):\n${this.currentUser.memory.map(m => `- [${m.category}] ${m.content}`).join('\n')}`
       : "";
@@ -273,16 +298,25 @@ export class AnoraAI {
     const contents = this.buildContents(savedHistory.slice(-15), newUserParts);
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+    const isDeep = this.currentUser.preferences.intelligenceLevel === 'DEEP';
     const config: any = { 
       systemInstruction: sysInstruction, 
       tools: tools.length > 0 ? tools : undefined,
-      thinkingConfig: modelName.includes('pro') ? { thinkingLevel: ThinkingLevel.LOW } : undefined
+      thinkingConfig: tools.length === 0 ? { thinkingLevel: isDeep ? ThinkingLevel.HIGH : ThinkingLevel.LOW } : undefined
     };
     
     try {
-      const result: any = await this.callWithRetry(async () => {
-        return await ai.models.generateContentStream({ model: modelName, contents, config });
-      });
+      let result: any;
+      try {
+        result = await this.callWithRetry(async () => {
+          return await ai.models.generateContentStream({ model: modelName, contents, config });
+        }, 2, 1000);
+      } catch (firstErr: any) {
+        console.warn("[Anora Stream] Initial stream failed, attempting resilient fallback stream:", firstErr);
+        // Fallback: standard stream without tools or complex thinking config
+        const fallbackConfig: any = { systemInstruction: sysInstruction };
+        result = await ai.models.generateContentStream({ model: 'gemini-3.8-flash', contents, config: fallbackConfig });
+      }
       
       let fullText = "";
       let affect: NeuralAffect = 'SOVEREIGN';
@@ -339,12 +373,12 @@ export class AnoraAI {
 
       yield { text: "", affect, isDone: true, sources: uniqueSources, images: generatedImages };
     } catch (err: any) {
-      console.error("Neural Stream Error:", err);
+      console.error("Neural Stream Handled Error:", err);
       const errMsg = err?.message?.toLowerCase() || "";
-      if (errMsg.includes('token') || errMsg.includes('limit')) {
-        yield { text: "\n\n[Neural Link Saturated: Generation exceeded token capacity. Synchronizing core...]", affect: 'SOVEREIGN', isDone: true, sources: [], images: [] };
+      if (errMsg.includes('token') || errMsg.includes('limit') || errMsg.includes('quota') || errMsg.includes('429') || errMsg.includes('resource_exhausted')) {
+        yield { text: "\n\n[Neural Link Notice: Cognitive bandwidth is momentarily congested. Please pause a moment and resend.]", affect: 'SOVEREIGN', isDone: true, sources: [], images: [] };
       } else {
-        throw err;
+        yield { text: `\n\n[Neural Notice: Connection interrupted. Please resend.]`, affect: 'SOVEREIGN', isDone: true, sources: [], images: [] };
       }
     }
   }
@@ -390,7 +424,7 @@ export class AnoraAI {
       tools.push({ functionDeclarations: [generateImageTool] });
     }
 
-    const modelName = this.currentUser.preferences.intelligenceLevel === 'DEEP' ? 'gemini-3.1-pro-preview' : 'gemini-3.5-flash';
+    const modelName = 'gemini-3.8-flash';
     const memoryContext = this.currentUser.memory && this.currentUser.memory.length > 0
       ? `\nKNOWLEDGE OF MASTER (${this.currentUser.name}):\n${this.currentUser.memory.map(m => `- [${m.category}] ${m.content}`).join('\n')}`
       : "";
@@ -416,10 +450,11 @@ export class AnoraAI {
     try {
       return await this.callWithRetry(async () => {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+        const isDeep = this.currentUser?.preferences?.intelligenceLevel === 'DEEP';
         const config: any = { 
           systemInstruction: sysInstruction, 
           tools: tools.length > 0 ? tools : undefined,
-          thinkingConfig: modelName.includes('pro') ? { thinkingLevel: ThinkingLevel.LOW } : undefined
+          thinkingConfig: tools.length === 0 ? { thinkingLevel: isDeep ? ThinkingLevel.HIGH : ThinkingLevel.LOW } : undefined
         };
         
         let response = await ai.models.generateContent({ model: modelName, contents, config });
@@ -564,7 +599,7 @@ export class AnoraAI {
       const photorealisticStyle = `An authentic, highly realistic, unedited capture, camera photograph. Raw documentary style, shot on professional camera, crisp focus, natural skin tones and textures, real-world lighting, organic depth of field, natural reflections. Strictly avoid CGI, AI-generated appearance, cartoon elements, over-saturation, airbrushing, or digital art effects. Directly manifest: ${prompt}`;
       
       const response = await this.ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+        model: 'gemini-3.1-flash-lite-image',
         contents: {
           parts: [{ text: photorealisticStyle }]
         },
@@ -636,7 +671,7 @@ export class AnoraAI {
       If verified is false, provide a specific reason for denial (e.g., "Incorrect recipient", "Amount mismatch", "Transaction expired", "Status not successful").`;
       
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: 'gemini-3.8-flash',
         contents: { parts: [{ inlineData: { mimeType: 'image/jpeg', data: extractBase64(base64Image) } }, { text: prompt }] },
         config: { responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
       });
@@ -687,7 +722,7 @@ export class AnoraAI {
         else if (pUpper === 'TEACHER') moodTag = '[AFFECT:RADIANT]';
         
         const result = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-3.8-flash',
           contents: `Create a highly human-like, emotional welcome message greeting the user named ${name} in the exact language: ${lang}.
           Style your response completely to fit this persona: ${persona}.
           Persona guide: ${personaInstruction}.

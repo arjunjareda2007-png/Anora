@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob as GenAIBlob } from '@google/genai';
 import { Message, Role, User, SubscriptionTier, Persona, NeuralAffect, TokenUsage, ChatSession, Broadcast } from './types';
-import { INITIAL_MESSAGE, OWNER_EMAIL, PERSONA_INSTRUCTIONS } from './constants';
+import { INITIAL_MESSAGE, OWNER_EMAIL, PERSONA_INSTRUCTIONS, ARJUN_DETAILED_BIO } from './constants';
 import { anoraService } from './services/geminiService';
 import { safeLocalStorage, pruneUser, cleanFirestoreData } from './src/utils/storage';
 import { MessageList } from './components/MessageList';
@@ -24,6 +24,10 @@ import { PersonaHub } from './components/PersonaHub';
 import { AppearanceModal } from './components/AppearanceModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { Palette, Eye, Search, Layers, Menu, Zap, Volume2, Mic2, Sparkles, Send, Plus, Trash2, Settings, User as UserIcon, Grid, Image as ImageIcon, X, Menu as HamburgerMenu, Sun, Moon, Square, RefreshCw, Play, Download } from 'lucide-react';
+import { db, handleFirestoreError, OperationType } from './firebase';
+import { useAuth, useUser, useClerk, UserButton } from '@clerk/clerk-react';
+import { dark } from '@clerk/themes';
+import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, deleteDoc } from 'firebase/firestore';
 
 const encode = (bytes: Uint8Array) => {
   let binary = '';
@@ -75,138 +79,137 @@ const TOKEN_LIMITS = {
   FREE: { chat: 20000, image: 10, video: 0, audio: 0 },
 };
 
-import { auth, db, handleFirestoreError, OperationType } from './firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, deleteDoc } from 'firebase/firestore';
-
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, errorInfo: string | null }> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, errorInfo: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, errorInfo: error.message };
-  }
-
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error("Neural Error Boundary caught exception:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      let displayMessage = "A neural synchronization error has occurred.";
-      try {
-        const parsed = JSON.parse(this.state.errorInfo || '{}');
-        if (parsed.error) {
-          displayMessage = `Neural Protocol Error: ${parsed.error} (${parsed.operationType} on ${parsed.path})`;
-        }
-      } catch (e) {
-        displayMessage = this.state.errorInfo || displayMessage;
-      }
-
-      return (
-        <div className="min-h-screen bg-black flex flex-col items-center justify-center p-8 text-center space-y-6">
-          <div className="w-24 h-24 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center animate-pulse">
-            <X className="w-12 h-12 text-red-500" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-white text-xl font-black uppercase tracking-[0.4em]">Sovereign Link Interrupted</h1>
-            <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest max-w-md mx-auto leading-relaxed">
-              {displayMessage}
-            </p>
-          </div>
-          <button 
-            onClick={() => window.location.reload()}
-            className="px-8 py-4 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-full hover:scale-105 transition-all active:scale-95"
-          >
-            Re-Initialize Protocol
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 const generateId = (prefix: string = '') => {
   const p = prefix ? `${prefix}_` : '';
   return `${p}${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 };
 
-const App: React.FC = () => {
+const MainApp: React.FC<{ onKeyConfigured?: (k: string) => void }> = ({ onKeyConfigured }) => {
+  const { isLoaded, isSignedIn, userId } = useAuth();
+  const { user: clerkUser } = useUser();
+  const clerk = useClerk();
+
+  // --- Core State Declarations ---
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const [currentMood, setCurrentMood] = useState<string>('CALM');
+  const [isThinking, setIsThinking] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [activeAffect, setActiveAffect] = useState<NeuralAffect>('SOVEREIGN');
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [isCommandCenterOpen, setIsCommandCenterOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [profileSection, setProfileSection] = useState<string | undefined>(undefined);
+  const [isHubOpen, setIsHubOpen] = useState(false);
+  const [hubTab, setHubTab] = useState<any>(undefined);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [commandCenterMode, setCommandCenterMode] = useState<'IMAGE' | 'VIDEO' | undefined>(undefined);
+  const [isAudioOpen, setIsAudioOpen] = useState(false);
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
+  const [isPersonaHubOpen, setIsPersonaHubOpen] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [ownerAvatars, setOwnerAvatars] = useState<Record<string, string>>({});
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [historyTab, setHistoryTab] = useState<'chats' | 'audios'>('chats');
+  const [audioHistory, setAudioHistory] = useState<{ id: string; text: string; raw?: string; timestamp?: string; source?: string }[]>([]);
+
+  // --- Refs ---
+  const isInitializedRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const currentVocalizeIdRef = useRef<string | null>(null);
+  const inputAudioContextRef = useRef<AudioContext | null>(null);
+  const outputAudioContextRef = useRef<AudioContext | null>(null);
+  const nextStartTimeRef = useRef(0);
+  const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const streamRef = useRef<MediaStream | null>(null);
+
   const handleUserUpdate = useCallback((updated: User) => {
     setCurrentUser(prev => {
       if (prev && JSON.stringify(prev) === JSON.stringify(updated)) return prev;
       return updated;
     });
   }, []);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const isInitializedRef = useRef<string | null>(null);
 
+  const openProfile = (section?: string) => {
+    setProfileSection(section);
+    setIsProfileOpen(true);
+  };
+
+  // --- Effects ---
   useEffect(() => {
-    let unsubscribeSnapshot: (() => void) | null = null;
+    if (!isLoaded) return;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // Set up real-time listener for the user document
-        unsubscribeSnapshot = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
-          if (docSnap.exists()) {
-            const userData = docSnap.data() as User;
-            setCurrentUser(prev => {
-              if (prev && JSON.stringify(prev) === JSON.stringify(userData)) return prev;
-              return userData;
-            });
-            safeLocalStorage.setItem('anora_session', JSON.stringify(userData));
-          } else {
-            // Fallback to local storage if Firestore is empty (initial setup)
-            const users: User[] = JSON.parse(safeLocalStorage.getItem('anora_users_db') || '[]');
-            const found = users.find(u => u.id === firebaseUser.uid || u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
-            if (found) {
-              const reconciledUser = { ...found, id: firebaseUser.uid };
-              setCurrentUser(reconciledUser);
-              safeLocalStorage.setItem('anora_session', JSON.stringify(reconciledUser));
-              // Sync to Firestore for future
-              try {
-                const pruned = cleanFirestoreData(pruneUser(reconciledUser));
-                setDoc(doc(db, 'users', firebaseUser.uid), pruned).catch(e => 
-                  handleFirestoreError(e, OperationType.WRITE, `users/${firebaseUser.uid}`)
-                );
-              } catch (syncErr) {
-                console.error("Sync error", syncErr);
-              }
-            }
-          }
-        }, (error) => {
-          handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}`);
-        });
+    if (isSignedIn && clerkUser) {
+      const emailLower = clerkUser.primaryEmailAddress?.emailAddress?.toLowerCase().trim() || '';
+      const isOwner = emailLower === OWNER_EMAIL;
+      const displayName = clerkUser.fullName || clerkUser.username || (emailLower ? emailLower.split('@')[0] : 'Neural Link User');
+      const avatarUrl = clerkUser.imageUrl;
 
-        setShowWelcome(true);
-      } else {
-        if (unsubscribeSnapshot) {
-          unsubscribeSnapshot();
-          unsubscribeSnapshot = null;
-        }
-        // Fallback to local storage for non-google users if needed
-        const saved = safeLocalStorage.getItem('anora_session');
-        if (saved) {
-          setCurrentUser(JSON.parse(saved));
-        } else {
-          setCurrentUser(null);
-        }
+      let existingUser: User | null = null;
+      const savedUserStr = safeLocalStorage.getItem(`anora_user_${clerkUser.id}`) || safeLocalStorage.getItem('anora_session');
+      if (savedUserStr) {
+        try {
+          existingUser = JSON.parse(savedUserStr);
+        } catch (e) {}
       }
-      setIsAuthReady(true);
-    });
 
-    return () => {
-      unsubscribeAuth();
-      if (unsubscribeSnapshot) unsubscribeSnapshot();
-    };
-  }, []);
-  
-  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
+      const reconciledUser: User = {
+        id: clerkUser.id,
+        name: existingUser?.name || displayName,
+        email: emailLower,
+        avatar: avatarUrl || existingUser?.avatar,
+        role: isOwner ? Role.OWNER : (existingUser?.role || Role.USER),
+        tier: isOwner ? SubscriptionTier.LIFETIME : (existingUser?.tier || SubscriptionTier.FREE),
+        bio: isOwner ? ARJUN_DETAILED_BIO : existingUser?.bio,
+        preferences: existingUser?.preferences || {
+          accentColor: isOwner ? '#d4af37' : '#3f3f46',
+          aiMood: (isOwner ? 'CREATIVE' : 'CALM') as any,
+          voiceName: 'Kore',
+          autoRead: false,
+          continuousListening: false,
+          intelligenceLevel: (isOwner ? 'DEEP' : 'BALANCED') as any,
+          language: 'Hindi',
+          theme: 'OBSIDIAN',
+          font: isOwner ? 'OUTFIT' : 'INTER',
+          soundEnabled: true,
+          persona: 'DEFAULT',
+          colorMode: 'WHITE'
+        },
+        createdAt: existingUser?.createdAt || new Date().toISOString(),
+        reminders: existingUser?.reminders || [],
+        notes: existingUser?.notes || [],
+        memory: existingUser?.memory || [],
+        projects: existingUser?.projects || []
+      };
+
+      setCurrentUser(prev => {
+        if (prev && JSON.stringify(prev) === JSON.stringify(reconciledUser)) return prev;
+        return reconciledUser;
+      });
+      safeLocalStorage.setItem(`anora_user_${clerkUser.id}`, JSON.stringify(reconciledUser));
+      safeLocalStorage.setItem('anora_session', JSON.stringify(reconciledUser));
+      setShowWelcome(true);
+      setIsAuthReady(true);
+    } else {
+      setCurrentUser(null);
+      safeLocalStorage.removeItem('anora_session');
+      setIsAuthReady(true);
+    }
+  }, [isLoaded, isSignedIn, clerkUser]);
 
   useEffect(() => {
     const broadcastsRef = collection(db, 'broadcasts');
@@ -222,34 +225,6 @@ const App: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [inputValue, setInputValue] = useState('');
-  const [currentMood, setCurrentMood] = useState<string>('CALM');
-  const [isThinking, setIsThinking] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const [activeAffect, setActiveAffect] = useState<NeuralAffect>('SOVEREIGN');
-  const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [isCommandCenterOpen, setIsCommandCenterOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [profileSection, setProfileSection] = useState<string | undefined>(undefined);
-  const openProfile = (section?: string) => {
-    setProfileSection(section);
-    setIsProfileOpen(true);
-  };
-  const [isHubOpen, setIsHubOpen] = useState(false);
-  const [hubTab, setHubTab] = useState<any>(undefined);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [commandCenterMode, setCommandCenterMode] = useState<'IMAGE' | 'VIDEO' | undefined>(undefined);
-  const [isAudioOpen, setIsAudioOpen] = useState(false);
-  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
-  const [isPersonaHubOpen, setIsPersonaHubOpen] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(false);
-  const [ownerAvatars, setOwnerAvatars] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const userTheme = currentUser?.preferences?.theme || 'MINIMAL';
@@ -263,7 +238,6 @@ const App: React.FC = () => {
   }, [currentUser?.preferences?.colorMode, currentUser?.preferences?.theme]);
 
   useEffect(() => {
-    // Fetch global owner-defined persona avatars
     const unsubscribe = onSnapshot(doc(db, 'config', 'persona_avatars'), (docSnap) => {
       if (docSnap.exists()) {
         setOwnerAvatars(docSnap.data().avatars || {});
@@ -273,23 +247,6 @@ const App: React.FC = () => {
     });
     return () => unsubscribe();
   }, []);
-
-  const [pendingImages, setPendingImages] = useState<string[]>([]);
-  const [viewingImage, setViewingImage] = useState<string | null>(null);
-  const [speakingId, setSpeakingId] = useState<string | null>(null);
-  const [historyTab, setHistoryTab] = useState<'chats' | 'audios'>('chats');
-  const [audioHistory, setAudioHistory] = useState<{ id: string; text: string; raw?: string; timestamp?: string; source?: string }[]>([]);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const currentVocalizeIdRef = useRef<string | null>(null);
-  const inputAudioContextRef = useRef<AudioContext | null>(null);
-  const outputAudioContextRef = useRef<AudioContext | null>(null);
-  const nextStartTimeRef = useRef(0);
-  const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     if (isHistoryOpen && currentUser?.email) {
@@ -443,9 +400,8 @@ const App: React.FC = () => {
           
         safeLocalStorage.setItem('anora_users_db', JSON.stringify(updatedUsers));
 
-        // Sync to Firestore to ensure password and other updates are saved
-        // Only sync if the ID matches the authenticated user to prevent permission errors
-        if (auth.currentUser && auth.currentUser.uid === currentUser.id) {
+        // Sync to Firestore to ensure preferences and other updates are saved
+        if (isSignedIn && userId && userId === currentUser.id) {
           const userStr = JSON.stringify(prunedCurrent);
           if (lastSyncedUserRef.current !== userStr) {
             lastSyncedUserRef.current = userStr;
@@ -589,14 +545,14 @@ const App: React.FC = () => {
 
   const handleLogout = useCallback(async () => {
     try {
-      await auth.signOut();
+      await clerk.signOut();
     } catch (err) {
-      console.error("Neural logout error", err);
+      console.error("Clerk logout error", err);
     }
     setCurrentUser(null);
     localStorage.removeItem('anora_session');
     setMessages([]);
-  }, []);
+  }, [clerk]);
 
   const handleSaveToMemory = useCallback((content: string) => {
     if (!currentUser) return;
@@ -642,7 +598,7 @@ const App: React.FC = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       const sessionPromise = ai.live.connect({
-        model: 'gemini-3.1-flash-live-preview',
+        model: 'gemini-3.8-live',
         callbacks: {
           onopen: () => {
             const source = inputAudioContextRef.current!.createMediaStreamSource(stream);
@@ -1139,10 +1095,11 @@ const App: React.FC = () => {
     };
   }, [ownerAvatars, currentUser?.personaAvatars, isPremium]);
 
-  if (!isAuthReady) {
+  if (!isAuthReady || !isLoaded) {
     return (
-      <div className="min-h-screen bg-white dark:bg-zinc-950 flex items-center justify-center">
+      <div className="min-h-screen bg-white dark:bg-zinc-950 flex flex-col items-center justify-center space-y-4 font-outfit">
         <AnoraLogo size={80} color="#000" showName={false} animate={true} />
+        <p className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.4em] animate-pulse">Establishing Sovereign Link...</p>
       </div>
     );
   }
@@ -1153,7 +1110,9 @@ const App: React.FC = () => {
     window.location.reload();
   };
 
-  if (!currentUser) return <AuthScreen onLogin={setCurrentUser} />;
+  if (!isSignedIn || !currentUser) {
+    return <AuthScreen hasPublishableKey={true} onKeyConfigured={onKeyConfigured} isDark={true} />;
+  }
 
   const accent = isOwner ? '#d4af37' : (isPremium ? '#8b5cf6' : '#3f3f46');
   const colorMode = currentUser.preferences.colorMode || 'WHITE';
@@ -1361,11 +1320,11 @@ const App: React.FC = () => {
                     <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">No Chat Links Installed</p>
                   </div>
                 ) : (
-                  sessions.filter((s, idx, self) => self.findIndex(t => t.id === s.id) === idx).map(s => {
+                  sessions.filter((s, idx, self) => self.findIndex(t => t.id === s.id) === idx).map((s, sIdx) => {
                     const isActive = activeSessionId === s.id;
                     return (
                       <div 
-                        key={s.id} 
+                        key={s.id ? `${s.id}-${sIdx}` : `sess-${sIdx}`} 
                         onClick={() => switchSession(s.id)}
                         className={`group flex items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer ${
                           isActive 
@@ -1532,6 +1491,9 @@ const App: React.FC = () => {
                  <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">Listening...</span>
                </div>
              )}
+             <div className="flex items-center">
+               <UserButton afterSignOutUrl="/" appearance={{ baseTheme: dark }} />
+             </div>
              <button onClick={() => setIsMenuOpen(true)} className={`p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border transition-all active:scale-90 shadow-sm ${getInputClass()}`}>
                 <HamburgerMenu className="w-5 h-5 sm:w-6 sm:h-6" />
              </button>
@@ -1598,7 +1560,7 @@ const App: React.FC = () => {
           {pendingImages.length > 0 && (
             <div className="flex gap-3 sm:gap-4 overflow-x-auto no-scrollbar py-2 px-1 animate-in slide-in-from-bottom-4 duration-500">
                {pendingImages.map((img, idx) => (
-                 <div key={idx} className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-[1.2rem] sm:rounded-[1.5rem] overflow-hidden border shadow-xl shrink-0 group hover:scale-105 transition-transform ${colorMode === 'WHITE' || colorMode === 'BRIGHT' || colorMode === 'DIM' || colorMode === 'COLOURFUL' ? 'border-zinc-200' : 'border-white/10'}`}>
+                 <div key={`pending-img-${idx}`} className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-[1.2rem] sm:rounded-[1.5rem] overflow-hidden border shadow-xl shrink-0 group hover:scale-105 transition-transform ${colorMode === 'WHITE' || colorMode === 'BRIGHT' || colorMode === 'DIM' || colorMode === 'COLOURFUL' ? 'border-zinc-200' : 'border-white/10'}`}>
                     <img src={img} className="w-full h-full object-cover" />
                     <button onClick={() => setPendingImages(prev => prev.filter((_, i) => i !== idx))} className="absolute top-1 right-1 p-1 bg-black/70 text-white rounded-full backdrop-blur-md opacity-100 transition-opacity shadow-lg">
                       <X className="w-2.5 h-2.5" />
@@ -1746,8 +1708,27 @@ const App: React.FC = () => {
   );
 };
 
-export default () => (
-  <ErrorBoundary>
-    <App />
-  </ErrorBoundary>
-);
+MainApp.displayName = 'MainApp';
+
+interface AppProps {
+  publishableKey?: string;
+  domainMismatchKey?: string;
+  onKeyConfigured?: (key: string) => void;
+}
+
+const App: React.FC<AppProps> = ({ publishableKey, domainMismatchKey, onKeyConfigured }) => {
+  if (!publishableKey) {
+    return (
+      <AuthScreen
+        hasPublishableKey={false}
+        domainMismatchKey={domainMismatchKey}
+        onKeyConfigured={onKeyConfigured}
+        isDark={true}
+      />
+    );
+  }
+  return <MainApp onKeyConfigured={onKeyConfigured} />;
+};
+
+App.displayName = 'App';
+export default App;
